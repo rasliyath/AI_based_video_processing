@@ -140,7 +140,7 @@ function App() {
         {trailer ? (
           <div>
             <h3>Trailer</h3>
-            <video width="640" controls src={(trailer.startsWith('http') ? trailer : (API_BASE + trailer))}></video>
+            <video width="640" controls preload="metadata" src={(trailer.startsWith('http') ? trailer : (API_BASE + trailer))} type="video/mp4"></video>
           </div>
         ) : null}
       </div>

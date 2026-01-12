@@ -7,6 +7,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 def safe_print(text):
+    """Safe print with unicode handling"""
     try:
         print(text, flush=True)
     except UnicodeEncodeError:
@@ -17,103 +18,171 @@ def safe_print(text):
             pass
 
 def format_time_srt(seconds):
-    hours = int(seconds / 3600)
-    minutes = int((seconds % 3600) / 60)
+    """Convert seconds to SRT time format"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
-video_path = sys.argv[1]
-output_path = sys.argv[2]
-
-safe_print(f"Generating subtitles for: {video_path}")
-os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-# Method 1: Try FFmpeg with subtitle extraction (for embedded subtitles)
-try:
-    result = subprocess.run(
-        ['ffmpeg', '-i', video_path, '-vn', '-an', '-c:s', 'copy', output_path],
-        capture_output=True,
-        timeout=30
-    )
-    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-        safe_print("Extracted embedded subtitles")
-        sys.exit(0)
-except:
-    pass
-
-# Method 2: Try Whisper transcription (local) with fallback to placeholder
-safe_print("Attempting AI transcription using Local Whisper (if installed). This may be slow on CPU.")
-try:
-    import whisper
-    model_name = os.environ.get('WHISPER_MODEL', 'small')  # allow override
-    safe_print(f"Loading Whisper model: {model_name} (this may take a while)")
-    model = whisper.load_model(model_name)
-    safe_print("Transcribing audio (Whisper)...")
-    # Prefer whisper's built-in transcribe which also returns segments with timings
-    res = model.transcribe(video_path, fp16=False)
-    segments = res.get('segments', []) if isinstance(res, dict) else []
-
-    if segments:
-        safe_print(f"Got {len(segments)} segments from Whisper, writing SRT...")
-        with open(output_path, 'w', encoding='utf-8') as f:
-            for i, seg in enumerate(segments, start=1):
-                start = seg.get('start', 0.0)
-                end = seg.get('end', start + seg.get('duration', 0.0))
-                text = seg.get('text', '').strip()
-                f.write(f"{i}\n")
-                f.write(f"{format_time_srt(start)} --> {format_time_srt(end)}\n")
-                f.write(f"{text}\n\n")
-        safe_print(f"✓ Subtitles saved to: {output_path}")
-        sys.exit(0)
-    else:
-        safe_print("Whisper returned no segments, falling back to placeholder subtitles")
-except Exception as e:
-    safe_print(f"Whisper transcription unavailable or failed: {e}\nFalling back to placeholder subtitles")
-    safe_print("WHISPER ERROR DETAILS:")
-    safe_print(repr(e))
-
-# Fallback: placeholder subtitles with proper timing
-safe_print("Generating placeholder subtitles with video duration...")
-
-import cv2
-
-try:
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = frame_count / fps if fps > 0 else 60
-    cap.release()
-except Exception:
-    duration = 60
-
-# Create SRT with semantic placeholders
-with open(output_path, 'w', encoding='utf-8') as f:
-    segment_duration = 5  # 5-second segments
-    segment_num = 1
+def extract_audio(video_path, audio_temp):
+    """Extract audio from video using FFmpeg"""
+    safe_print(f"[Subtitle] Extracting audio from video...")
     
-    for i in range(int(duration / segment_duration) + 1):
-        start = i * segment_duration
-        end = min((i + 1) * segment_duration, duration)
+    try:
+        result = subprocess.run([
+            'ffmpeg', '-i', video_path, '-q:a', '9', '-n', audio_temp
+        ], capture_output=True, text=True, timeout=120)
         
-        if start >= duration:
-            break
-        
-        start_srt = format_time_srt(start)
-        end_srt = format_time_srt(end)
-        
-        # Semantic placeholder (more useful than generic text)
-        segment_num_display = i + 1
-        text = f"[Scene {segment_num_display}]\n(For AI-generated subtitles, install: pip install openai-whisper)"
-        
-        f.write(f"{segment_num}\n")
-        f.write(f"{start_srt} --> {end_srt}\n")
-        f.write(f"{text}\n\n")
-        segment_num += 1
+        if result.returncode == 0 and os.path.exists(audio_temp):
+            safe_print(f"[Subtitle] Audio extracted successfully")
+            return True
+        else:
+            safe_print(f"[Subtitle] FFmpeg audio extraction failed")
+            return False
+    except Exception as e:
+        safe_print(f"[Subtitle] Error extracting audio: {e}")
+        return False
 
-safe_print(f"Placeholder subtitles saved to: {output_path}")
-safe_print("To enable AI transcription:")
-safe_print("1. Install GPU drivers (if NVIDIA) if you want faster performance")
-safe_print("2. pip install openai-whisper")
-safe_print("3. Set environment variable WHISPER_MODEL if you want a different model (tiny/base/small/medium/large)")
-safe_print("4. Re-run subtitle generation")
+def generate_subtitles_with_whisper(video_path, output_path):
+    """Try to generate subtitles using Whisper"""
+    safe_print(f"[Subtitle] Attempting Whisper transcription...")
+    
+    try:
+        import whisper
+        
+        # Use tiny model for fastest processing (good enough for subtitles)
+        model_name = os.environ.get('WHISPER_MODEL', 'tiny')
+        safe_print(f"[Subtitle] Loading Whisper model: {model_name}")
+        
+        try:
+            model = whisper.load_model(model_name, device='cpu')  # Force CPU
+        except Exception as e:
+            safe_print(f"[Subtitle] Warning: Could not load model '{model_name}': {e}")
+            safe_print(f"[Subtitle] Trying fallback model: tiny")
+            model = whisper.load_model('tiny', device='cpu')
+        
+        safe_print(f"[Subtitle] Transcribing audio (this may take a while)...")
+        result = model.transcribe(video_path, language='en', verbose=False)
+        
+        segments = result.get('segments', [])
+        
+        if not segments:
+            safe_print(f"[Subtitle] Whisper returned no segments")
+            return False
+        
+        safe_print(f"[Subtitle] Got {len(segments)} segments, writing SRT...")
+        
+        # Write SRT file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for i, segment in enumerate(segments, 1):
+                start = format_time_srt(segment.get('start', 0))
+                end = format_time_srt(segment.get('end', 0))
+                text = segment.get('text', '').strip()
+                
+                if text:  # Only write non-empty segments
+                    f.write(f"{i}\n{start} --> {end}\n{text}\n\n")
+        
+        safe_print(f"✓ Subtitles generated via Whisper: {output_path}")
+        return True
+    
+    except ImportError:
+        safe_print(f"[Subtitle] Whisper not installed or import failed")
+        return False
+    except Exception as e:
+        safe_print(f"[Subtitle] Whisper error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def generate_placeholder_subtitles(video_path, output_path):
+    """Generate placeholder subtitles with video duration info"""
+    safe_print(f"[Subtitle] Generating placeholder subtitles...")
+    
+    try:
+        import cv2
+        
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            safe_print(f"[Subtitle] Cannot determine video duration")
+            duration = 60
+        else:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = frame_count / fps if fps > 0 else 60
+            cap.release()
+    except:
+        duration = 60
+    
+    # Create SRT with placeholder content
+    with open(output_path, 'w', encoding='utf-8') as f:
+        segment_duration = 10  # 10-second segments
+        segment_num = 1
+        
+        for i in range(int(duration / segment_duration) + 1):
+            start = i * segment_duration
+            end = min((i + 1) * segment_duration, duration)
+            
+            if start >= duration:
+                break
+            
+            start_srt = format_time_srt(start)
+            end_srt = format_time_srt(end)
+            
+            f.write(f"{segment_num}\n")
+            f.write(f"{start_srt} --> {end_srt}\n")
+            f.write(f"[Scene {segment_num}] - Automatic subtitles disabled\n\n")
+            segment_num += 1
+    
+    safe_print(f"[Subtitle] Placeholder subtitles created (install Whisper for AI transcription)")
+    return True
+
+def main():
+    # Validate arguments
+    if len(sys.argv) < 3:
+        safe_print("Usage: python subtitle_generator.py <video_path> <output_path>")
+        sys.exit(1)
+    
+    video_path = sys.argv[1]
+    output_path = sys.argv[2]
+    
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    
+    safe_print(f"[Subtitle] Starting subtitle generation...")
+    safe_print(f"  Input: {video_path}")
+    safe_print(f"  Output: {output_path}")
+    
+    try:
+        # Try Whisper first
+        success = generate_subtitles_with_whisper(video_path, output_path)
+        
+        # Fall back to placeholder if Whisper fails
+        if not success:
+            safe_print(f"[Subtitle] Falling back to placeholder subtitles...")
+            success = generate_placeholder_subtitles(video_path, output_path)
+        
+        if success and os.path.exists(output_path):
+            file_size = os.path.getsize(output_path)
+            safe_print(f"✓ Subtitles saved ({file_size} bytes)")
+            sys.exit(0)
+        else:
+            safe_print(f"[Subtitle] ERROR: Could not generate subtitles")
+            sys.exit(1)
+    
+    except Exception as e:
+        safe_print(f"[Subtitle] FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Last resort: create empty placeholder
+        try:
+            generate_placeholder_subtitles(video_path, output_path)
+            sys.exit(0)
+        except:
+            sys.exit(1)
+
+if __name__ == '__main__':
+    main()

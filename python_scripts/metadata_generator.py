@@ -30,9 +30,6 @@ fps = cap.get(cv2.CAP_PROP_FPS)
 frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 duration = frame_count / fps if fps > 0 else 0
 
-safe_print(f"Analyzing video: {video_path}")
-safe_print(f"Duration: {round(duration, 2)}s, Frames: {frame_count}")
-
 # OPTIMIZATION: Seek-based sampling with downscaled processing for speed and low memory
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -42,7 +39,7 @@ face_cascade = cv2.CascadeClassifier(
 sample_count = min(12, 15)
 sample_count = min(sample_count, max(1, frame_count))
 
-safe_print(f"Sampling {sample_count} frames by seeking (frame_count={frame_count})")
+# Removed print to avoid JSON parsing issues
 
 # Choose centered sample positions across the video
 sample_positions = [int((i + 0.5) * frame_count / sample_count) for i in range(sample_count)]
@@ -86,8 +83,7 @@ for i, pos in enumerate(sample_positions):
         prev_gray = gray
         sample_frames.append(small)
 
-        if (i + 1) % 5 == 0:
-            safe_print(f"[Metadata] Sampled {i+1}/{sample_count} frames...")
+        # Removed progress print to avoid JSON parsing issues
 
     except MemoryError:
         safe_print("[Metadata] MemoryError during sampling — skipping")
@@ -95,7 +91,7 @@ for i, pos in enumerate(sample_positions):
 
 cap.release()
 
-safe_print(f"[Metadata] Collected {len(sample_frames)} samples")# Calculate metrics
+# Calculate metrics
 avg_brightness = brightness_sum / len(sample_frames) if sample_frames else 128
 avg_motion = sum(motion_scores) / len(motion_scores) if motion_scores else 0
 has_faces = total_faces > 0
@@ -144,4 +140,3 @@ metadata = {
 }
 
 print(json.dumps(metadata, ensure_ascii=False))
-safe_print("Metadata generation complete")
