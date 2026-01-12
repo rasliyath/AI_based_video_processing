@@ -4,12 +4,12 @@ An automated video processing system for CMS that generates thumbnails, trailers
 
 ## Features
 
-- **Auto Thumbnail Generation**: Creates 20 high-quality thumbnails with AI quality scoring
-- **Smart Trailer Creation**: Generates 15-second montage trailers from full video content
-- **AI Metadata**: Automatically generates titles, descriptions, tags, and categories
+- **Auto Thumbnail Generation**: Creates 10 high-quality thumbnails with AI quality scoring
+- **Smart Trailer Creation**: Generates montage trailers from full video content
+<!-- - **AI Metadata**: Automatically generates titles, descriptions, tags, and categories
 - **Subtitle Generation**: Creates subtitles with multi-language support (when available)
 - **Audio Verification**: Ensures all outputs contain audio
-- **CMS Integration**: REST API with React frontend for review and approval
+- **CMS Integration**: REST API with React frontend for review and approval -->
 
 ## Tech Stack
 
@@ -110,7 +110,7 @@ An automated video processing system for CMS that generates thumbnails, trailers
 └── trailers/          # Generated trailers & subtitles
 ```
 
-## Troubleshooting
+<!-- ## Troubleshooting
 
 - **Whisper Issues**: If subtitles fail, install PyTorch CPU version
 - **FFmpeg Errors**: Ensure FFmpeg is in system PATH
@@ -119,4 +119,4 @@ An automated video processing system for CMS that generates thumbnails, trailers
 
 ## License
 
-ISC
+ISC -->
