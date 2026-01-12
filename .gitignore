@@ -1,0 +1,46 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+npm-debug.log
+
+# Uploads / media
+backend/uploads/
+*.mp4
+*.mp3
+*.wav
+*.mov
+*.avi
+
+# AI outputs
+outputs/
+thumbnails/
+trailers/
+
+# OS
+.DS_Store
+Thumbs.db
