@@ -174,33 +174,12 @@ router.post("/process", upload.single("video"), async (req, res) => {
       console.log("✗ Trailer generation failed:", e.message);
     }
 
-    // Step 4: Generate Metadata
-    console.log("\n[Step 4] Generating AI metadata...");
-    
-    let metadata = {};
-    try {
-      const output = runPython(metadataScript, [videoPath], TIMEOUTS.metadata);
-      metadata = JSON.parse(output.trim());
-      console.log("✓ Metadata generated");
-      console.log(`  Title: ${metadata.title}`);
-      console.log(`  Genre: ${metadata.genre}`);
-    } catch (e) {
-      console.log("✗ Metadata failed, using defaults:", e.message);
-      metadata = { 
-        title: "AI Generated Video", 
-        description: "Auto-generated metadata", 
-        tags: ["ai-generated", "video"], 
-        genre: "Entertainment",
-        duration: 0
-      };
-    }
+    // Step 4: Generate AI Subtitles with Whisper
+    console.log("\n[Step 4] Generating subtitles using Whisper AI...");
 
-    // Step 5: Generate AI Subtitles with Whisper
-    console.log("\n[Step 5] Generating subtitles using Whisper AI...");
-    
     const subtitlePath = path.join(trailersDir, `subtitles_${Date.now()}.srt`);
     let subtitleGenerated = false;
-    
+
     try {
       runPython(subtitleScript, [videoPath, subtitlePath], TIMEOUTS.subtitles);
       if (fs.existsSync(subtitlePath)) {
@@ -215,6 +194,31 @@ router.post("/process", upload.single("video"), async (req, res) => {
       }
     } catch (e) {
       console.log("✗ Subtitles failed:", e.message);
+    }
+
+    // Step 5: Generate Metadata (using transcript if available)
+    console.log("\n[Step 5] Generating AI metadata...");
+
+    let metadata = {};
+    try {
+      const args = [videoPath];
+      if (subtitleGenerated) {
+        args.push(subtitlePath);
+      }
+      const output = runPython(metadataScript, args, TIMEOUTS.metadata);
+      metadata = JSON.parse(output.trim());
+      console.log("✓ Metadata generated");
+      console.log(`  Title: ${metadata.title}`);
+      console.log(`  Genre: ${metadata.genre}`);
+    } catch (e) {
+      console.log("✗ Metadata failed, using defaults:", e.message);
+      metadata = {
+        title: "AI Generated Video",
+        description: "Auto-generated metadata",
+        tags: ["ai-generated", "video"],
+        genre: "Entertainment",
+        duration: 0
+      };
     }
 
     // Result
