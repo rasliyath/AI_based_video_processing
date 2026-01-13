@@ -2,9 +2,9 @@
 import sys
 import os
 import subprocess
-import json
-import cv2
-import numpy as np
+import tempfile
+import time
+import yt_dlp
 
 sys.stdout.reconfigure(encoding='utf-8')
 os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -20,193 +20,120 @@ def safe_print(text):
         except:
             pass
 
-def detect_scene_changes(video_path, threshold=25.0, max_scenes=5):
-    """Detect scene boundaries using histogram difference"""
-    safe_print("[Trailer] Detecting scene changes...")
+def download_streaming_url(url, temp_dir):
+    """Download streaming video to temp file"""
+    safe_print("[Trailer] Downloading streaming video to temp file...")
     
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        safe_print("[Trailer] Warning: Cannot analyze scenes")
-        return []
+    timestamp = int(time.time())
+    base_name = f"trailer_video_{timestamp}"
+    base_path = os.path.join(temp_dir, base_name)
     
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    prev_hist = None
-    scenes = []
-    frame_num = 0
-    sample_rate = max(1, int(fps / 2))  # Sample every 0.5s to speed up
-    
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Only check every nth frame
-        if frame_num % sample_rate != 0:
-            frame_num += 1
-            continue
-        
-        try:
-            # Resize for faster processing
-            small = cv2.resize(frame, (320, 180))
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-            
-            if prev_hist is not None:
-                # Compute histogram difference
-                hist_diff = cv2.compareHist(
-                    prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA
-                )
-                
-                if hist_diff > threshold:
-                    scenes.append({
-                        'frame': frame_num,
-                        'timestamp': frame_num / fps,
-                        'diff': float(hist_diff)
-                    })
-            
-            prev_hist = hist
-        except:
-            pass
-        
-        frame_num += 1
-    
-    cap.release()
-    
-    # Sort by difference and take top scenes
-    scenes.sort(key=lambda x: x['diff'], reverse=True)
-    scenes = scenes[:max_scenes]
-    scenes.sort(key=lambda x: x['timestamp'])  # Re-sort by time
-    
-    safe_print(f"[Trailer] Found {len(scenes)} scene changes")
-    return scenes
-
-def detect_audio_peaks(video_path, max_peaks=5):
-    """Detect moments with high audio energy"""
-    safe_print("[Trailer] Analyzing audio peaks...")
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'quiet': False,
+        'no_warnings': True,
+        'outtmpl': base_path,
+        'socket_timeout': 30,
+        'http_chunk_size': 10485760,
+    }
     
     try:
-        import librosa
-        from scipy.signal import find_peaks
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
         
-        # Extract audio to temp file
-        audio_temp = '/tmp/audio_temp.wav'
+        # Find downloaded file
+        temp_files = []
+        if os.path.exists(temp_dir):
+            temp_files = os.listdir(temp_dir)
+            temp_files = [f for f in temp_files if f.startswith(base_name)]
         
-        result = subprocess.run([
-            'ffmpeg', '-i', video_path, '-q:a', '9', '-n', audio_temp
-        ], capture_output=True, text=True, timeout=60)
+        matching_files = []
+        for fname in temp_files:
+            fpath = os.path.join(temp_dir, fname)
+            if os.path.isfile(fpath):
+                size = os.path.getsize(fpath)
+                if size > 1000000:
+                    matching_files.append((fpath, size))
         
-        if result.returncode != 0 or not os.path.exists(audio_temp):
-            safe_print("[Trailer] Warning: Could not extract audio")
-            return []
+        if not matching_files:
+            raise Exception(f"No valid video file found")
         
-        # Load and analyze
-        y, sr = librosa.load(audio_temp, sr=None)
+        video_path = max(matching_files, key=lambda x: x[1])[0]
+        safe_print(f"[Trailer] Downloaded: {os.path.basename(video_path)} ({os.path.getsize(video_path) / 1024 / 1024:.1f} MB)")
         
-        # Get energy envelope
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=2048, hop_length=512)
-        log_S = librosa.power_to_db(S, ref=np.max)
-        energy = np.mean(log_S, axis=0)
-        
-        # Find peaks
-        mean_energy = np.mean(energy)
-        std_energy = np.std(energy)
-        threshold = mean_energy + std_energy
-        
-        peaks, _ = find_peaks(energy, height=threshold, distance=int(sr / 512))
-        
-        # Clean up
-        try:
-            os.remove(audio_temp)
-        except:
-            pass
-        
-        # Convert frame indices to timestamps
-        hop_length = 512
-        peak_times = [(p * hop_length) / sr for p in peaks]
-        
-        # Get top peaks by energy
-        peak_data = [
-            {'timestamp': t, 'energy': float(energy[int(t * sr / hop_length)])}
-            for t in peak_times
-        ]
-        peak_data.sort(key=lambda x: x['energy'], reverse=True)
-        peak_data = peak_data[:max_peaks]
-        peak_data.sort(key=lambda x: x['timestamp'])
-        
-        safe_print(f"[Trailer] Found {len(peak_data)} audio peaks")
-        return peak_data
+        return video_path
     
-    except ImportError:
-        safe_print("[Trailer] librosa not installed, skipping audio analysis")
-        return []
     except Exception as e:
-        safe_print(f"[Trailer] Audio analysis error: {e}")
-        return []
+        safe_print(f"[Trailer] Download failed: {e}")
+        raise
+
+def get_video_duration(video_path):
+    """Get video duration using ffprobe"""
+    try:
+        ffprobe_cmd = [
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1:nokey=1', video_path
+        ]
+        
+        result = subprocess.run(ffprobe_cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            return float(result.stdout.strip())
+        else:
+            return None
+    except:
+        return None
 
 def generate_highlight_trailer(video_path, output_path, mode='highlights'):
-    """Create trailer from best moments or fixed duration"""
+    """Create trailer - works with both local files and streaming URLs"""
     
-    # Ensure output directory exists
     output_dir = os.path.dirname(output_path)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     
     safe_print(f"[Trailer] Generating trailer: {output_path}")
     
-    # Get video info
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        safe_print("[Trailer] ERROR: Cannot open video")
+    # Check if it's a streaming URL or local file
+    is_streaming = video_path.startswith('http://') or video_path.startswith('https://')
+    actual_video_path = video_path
+    temp_dir = None
+    
+    # If streaming URL, download to temp file
+    if is_streaming:
+        temp_dir = tempfile.mkdtemp()
+        try:
+            actual_video_path = download_streaming_url(video_path, temp_dir)
+        except Exception as e:
+            safe_print(f"[Trailer] ERROR: Failed to download video: {e}")
+            return False
+    
+    # Get video duration
+    total_duration = get_video_duration(actual_video_path)
+    
+    if not total_duration or total_duration <= 0:
+        safe_print("[Trailer] ERROR: Could not determine video duration")
         return False
     
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    total_duration = total_frames / fps if fps > 0 else 0
-    cap.release()
-    
-    safe_print(f"[Trailer] Video info: {total_duration:.1f}s, {fps:.1f} fps")
-    
-    if total_duration <= 0:
-        safe_print("[Trailer] ERROR: Invalid video duration")
-        return False
+    safe_print(f"[Trailer] Video duration: {total_duration:.1f}s")
     
     segments = []
     
     if mode == 'highlights' or mode == 'highlight':
-        # Detect scenes and audio peaks
-        scenes = detect_scene_changes(video_path, threshold=20.0, max_scenes=3)
-        audio_peaks = detect_audio_peaks(video_path, max_peaks=3)
+        # Uniform sampling for highlights
+        safe_print("[Trailer] Using uniform sampling for best moments...")
+        num_samples = 4
+        interval = total_duration / (num_samples + 1)
         
-        # Combine moments
-        best_moments = []
-        
-        for scene in scenes:
-            best_moments.append(scene['timestamp'])
-        
-        for peak in audio_peaks:
-            best_moments.append(peak['timestamp'])
-        
-        # Remove duplicates and sort
-        best_moments = sorted(set(best_moments))
-        
-        if not best_moments:
-            safe_print("[Trailer] No highlights detected, using uniform sampling")
-            # Fallback: sample evenly
-            num_samples = 3
-            interval = total_duration / (num_samples + 1)
-            best_moments = [interval * i for i in range(1, num_samples + 1)]
-        
-        safe_print(f"[Trailer] Selected {len(best_moments)} highlight moments")
-        
-        # Extract 3-second clips around each moment
-        segment_duration = 3
-        for moment in best_moments:
-            start = max(0, moment - segment_duration / 2)
-            end = min(total_duration, start + segment_duration)
+        for i in range(1, num_samples + 1):
+            start = interval * i
+            clip_duration = min(5, total_duration / num_samples)
+            end = min(total_duration, start + clip_duration)
             segments.append((start, end))
+        
+        safe_print(f"[Trailer] Selected {len(segments)} segments (~{len(segments) * 5:.1f}s total)")
     
     else:
-        # Fixed duration (first N seconds)
+        # Fixed duration
         try:
             duration = int(mode)
         except:
@@ -220,11 +147,22 @@ def generate_highlight_trailer(video_path, output_path, mode='highlights'):
         safe_print("[Trailer] ERROR: No segments to process")
         return False
     
-    # Extract and concatenate segments using FFmpeg
-    return create_trailer_from_segments(video_path, output_path, segments, fps)
+    # Create trailer
+    success = create_trailer_from_segments(actual_video_path, output_path, segments)
+    
+    # Cleanup temp directory if we created one
+    if temp_dir and os.path.exists(temp_dir):
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+            safe_print(f"[Trailer] Cleaned up temp directory")
+        except:
+            pass
+    
+    return success
 
-def create_trailer_from_segments(video_path, output_path, segments, fps):
-    """Extract segments and concatenate into single video"""
+def create_trailer_from_segments(video_path, output_path, segments):
+    """Extract segments and concatenate"""
     
     temp_files = []
     concat_list = []
@@ -241,22 +179,34 @@ def create_trailer_from_segments(video_path, output_path, segments, fps):
             '-to', str(end),
             '-c:v', 'libx264',
             '-c:a', 'aac',
-            '-preset', 'fast',
+            '-preset', 'veryfast',
+            '-crf', '28',
             '-pix_fmt', 'yuv420p',
             temp_file
         ]
         
         safe_print(f"  Segment {i+1}: {start:.1f}s - {end:.1f}s")
         
-        result = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=120)
-        
-        if result.returncode == 0 and os.path.exists(temp_file):
-            concat_list.append(f"file '{temp_file}'")
-        else:
-            safe_print(f"  [Warning] Failed to extract segment {i+1}")
+        try:
+            result = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0 and os.path.exists(temp_file) and os.path.getsize(temp_file) > 5000:
+                concat_list.append(f"file '{temp_file}'")
+            else:
+                safe_print(f"  [Warning] Failed to extract segment {i+1}")
+        except subprocess.TimeoutExpired:
+            safe_print(f"  [Warning] Segment {i+1} timed out")
+        except Exception as e:
+            safe_print(f"  [Warning] Segment {i+1} error: {e}")
     
     if not concat_list:
         safe_print("[Trailer] ERROR: No segments extracted")
+        for f in temp_files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
         return False
     
     # Create concat file
@@ -266,9 +216,15 @@ def create_trailer_from_segments(video_path, output_path, segments, fps):
             f.write('\n'.join(concat_list))
     except Exception as e:
         safe_print(f"[Trailer] ERROR: Cannot write concat file: {e}")
+        for f in temp_files + [concat_file]:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
         return False
     
-    # Concatenate segments
+    # Concatenate
     safe_print("[Trailer] Concatenating segments...")
     
     concat_cmd = [
@@ -276,14 +232,19 @@ def create_trailer_from_segments(video_path, output_path, segments, fps):
         '-i', concat_file,
         '-c:v', 'libx264',
         '-c:a', 'aac',
-        '-preset', 'fast',
+        '-preset', 'veryfast',
+        '-crf', '28',
         '-pix_fmt', 'yuv420p',
         output_path
     ]
     
-    result = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=180)
+    try:
+        result = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        safe_print("[Trailer] ERROR: Concatenation timed out")
+        result = None
     
-    # Cleanup temp files
+    # Cleanup
     for f in temp_files + [concat_file]:
         try:
             if os.path.exists(f):
@@ -291,13 +252,13 @@ def create_trailer_from_segments(video_path, output_path, segments, fps):
         except:
             pass
     
-    if result.returncode != 0:
-        safe_print(f"[Trailer] ERROR: Concatenation failed: {result.stderr}")
+    if not result or result.returncode != 0:
+        safe_print("[Trailer] ERROR: Concatenation failed")
         return False
     
-    # Verify output
+    # Verify
     if not os.path.exists(output_path) or os.path.getsize(output_path) < 10000:
-        safe_print("[Trailer] ERROR: Output file not created or too small")
+        safe_print("[Trailer] ERROR: Output file not created")
         return False
     
     file_size_mb = os.path.getsize(output_path) / 1024 / 1024
@@ -305,24 +266,21 @@ def create_trailer_from_segments(video_path, output_path, segments, fps):
     
     return True
 
-def is_url(path):
-    """Check if path is a URL"""
-    return path.startswith('http://') or path.startswith('https://')
-
 def main():
-    # Validate arguments
     if len(sys.argv) < 3:
-        safe_print("Usage: python trailer_generator.py <video_path|url> <output_path> [mode|duration]")
-        safe_print("  mode: 'highlights' (detect best moments) or integer duration in seconds")
+        safe_print("Usage: python trailer_generator.py <video_path|url> <output_path> [mode]")
         sys.exit(1)
     
     video_path = sys.argv[1]
     output_path = sys.argv[2]
     mode = sys.argv[3] if len(sys.argv) > 3 else 'highlights'
     
-    # Verify input file or URL
-    if not is_url(video_path) and not os.path.exists(video_path):
-        safe_print(f"[Trailer] ERROR: Input file not found: {video_path}")
+    # Check if local file exists (for uploaded files)
+    is_local = os.path.exists(video_path)
+    is_url = video_path.startswith('http://') or video_path.startswith('https://')
+    
+    if not is_local and not is_url:
+        safe_print(f"[Trailer] ERROR: Invalid input: {video_path}")
         sys.exit(1)
     
     try:

@@ -125,7 +125,7 @@ function App() {
 
       <div className="status">
         {running ? <div className="loader">Processing... (polling for thumbnails)</div> : <div>Idle</div>}
-        { !backendAvailable && <div style={{color:'#a00', marginTop:8}}>Backend not reachable — check server (http://localhost:5000)</div> }
+        {/* { !backendAvailable && <div style={{color:'#a00', marginTop:8}}>Backend not reachable — check server (http://localhost:5000)</div> } */}
       </div>
 
       <div className="gallery">
@@ -145,12 +145,12 @@ function App() {
         ) : null}
       </div>
 
-      <div className="log">
+      {/* <div className="log">
         <h4>Activity Log</h4>
         <div className="logLines">
           {log.map((l, idx) => <div key={idx}>{l}</div>)}
         </div>
-      </div>
+      </div> */}
 
     </div>
   )

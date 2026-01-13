@@ -16,11 +16,11 @@ const subtitleScript = path.join(pythonDir, "subtitle_generator.py");
 
 // Timeout configuration (in milliseconds)
 const TIMEOUTS = {
-  youtube: 60000,      // 1 minute for URL extraction (NO DOWNLOAD)
+  youtube: 60000,      // 1 minute for URL extraction
   thumbnail: 600000,   // 10 minutes
-  trailer: 120000,     // 2 minutes (fast mode should complete in <2min)
+  trailer: 180000,     // 3 minutes
   metadata: 120000,    // 2 minutes
-  subtitles: 300000    // 5 minutes for Whisper transcription
+  subtitles: 300000    // 5 minutes
 };
 
 // Helper function to run Python scripts synchronously
@@ -86,7 +86,6 @@ router.post("/process", upload.single("video"), async (req, res) => {
       try {
         const output = runPython(youtubeScript, [youtubeUrl], TIMEOUTS.youtube);
         
-        // Debug: log raw output
         console.log(`[Debug] Raw output length: ${output.length}`);
         
         // Find and extract JSON from output
@@ -124,18 +123,16 @@ router.post("/process", upload.single("video"), async (req, res) => {
       return res.status(400).json({ error: "Provide YouTube URL or upload video file" });
     }
 
-    // Step 2: Generate Thumbnails (Smart Quality Selection)
+    // Step 2: Generate Thumbnails
     console.log("\n[Step 2] Generating smart thumbnails with quality filtering...");
     
     const thumbnailsDir = path.join(__dirname, "../thumbnails");
-    // Clean old thumbnails
     if (fs.existsSync(thumbnailsDir)) {
       fs.readdirSync(thumbnailsDir).forEach(f => {
         try { fs.unlinkSync(path.join(thumbnailsDir, f)); } catch(e) {}
       });
     }
     
-    // Generate 20+ candidates, select best 10
     runPython(thumbnailScript, [videoPath, thumbnailsDir, "20"], TIMEOUTS.thumbnail);
     
     const thumbnailFiles = fs.readdirSync(thumbnailsDir)
@@ -148,7 +145,7 @@ router.post("/process", upload.single("video"), async (req, res) => {
     
     console.log(`✓ Generated ${thumbnailFiles.length} high-quality thumbnails`);
 
-    // Step 3: Generate Highlight Trailer (Best Moments)
+    // Step 3: Generate Highlight Trailer
     console.log("\n[Step 3] Generating highlight trailer from best moments...");
     
     const trailersDir = path.join(__dirname, "../trailers");
@@ -158,10 +155,9 @@ router.post("/process", upload.single("video"), async (req, res) => {
     let trailerGenerated = false;
     
     try {
-      // Pass "highlights" mode instead of fixed duration
+      // Pass videoPath (which works for both URLs and local files)
       runPython(trailerScript, [videoPath, trailerPath, "highlights"], TIMEOUTS.trailer);
       
-      // Verify trailer file exists and has content
       if (fs.existsSync(trailerPath) && fs.statSync(trailerPath).size > 10000) {
         trailerGenerated = true;
         const trailerSize = (fs.statSync(trailerPath).size / 1024 / 1024).toFixed(2);
@@ -174,7 +170,7 @@ router.post("/process", upload.single("video"), async (req, res) => {
       console.log("✗ Trailer generation failed:", e.message);
     }
 
-    // Step 4: Generate AI Subtitles with Whisper
+  // Step 4: Generate AI Subtitles with Whisper
     console.log("\n[Step 4] Generating subtitles using Whisper AI...");
 
     const subtitlePath = path.join(trailersDir, `subtitles_${Date.now()}.srt`);
@@ -195,6 +191,7 @@ router.post("/process", upload.single("video"), async (req, res) => {
     } catch (e) {
       console.log("✗ Subtitles failed:", e.message);
     }
+
 
     // Step 5: Generate Metadata (using transcript if available)
     console.log("\n[Step 5] Generating AI metadata...");
