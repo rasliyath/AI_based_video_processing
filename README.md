@@ -6,7 +6,7 @@ An automated video processing system for CMS that generates thumbnails, trailers
 
 - **Auto Thumbnail Generation**: Creates 10 high-quality thumbnails with AI quality scoring
 - **Smart Trailer Creation**: Generates montage trailers from full video content
-- **AI Metadata Generation**: Uses free AI analysis to create intelligent titles, descriptions, tags, and categories from video transcripts
+- **AI Metadata Generation**: Uses local AI (Ollama) to create intelligent titles, descriptions, tags, and categories from video transcripts
 - **Subtitle Generation**: Creates accurate subtitles using OpenAI Whisper
 - **Audio Verification**: Ensures all outputs contain audio
 <!-- - **CMS Integration**: REST API with React frontend for review and approval -->
@@ -25,6 +25,7 @@ An automated video processing system for CMS that generates thumbnails, trailers
 - MongoDB
 - FFmpeg
 - Git
+- Ollama
 
 ### Windows-Specific Requirements
 
@@ -59,13 +60,22 @@ An automated video processing system for CMS that generates thumbnails, trailers
     # Optional: pip install googletrans==4.0.0rc1 librosa
     ```
 
-5. **NLTK Data Setup** (Required for AI metadata generation):
+5. **NLTK Data Setup** (Optional - for enhanced text processing):
     ```bash
     cd python_scripts
     python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('punkt_tab')"
     ```
 
-6. **Whisper Model Configuration** (Optional - for faster processing):
+6. **Ollama Setup** (Required for AI metadata generation):
+    ```bash
+    # Download and install Ollama from https://ollama.ai/download
+    # Pull the Mistral model
+    ollama pull mistral
+    # Start Ollama service (keep running in background)
+    ollama serve
+    ```
+
+7. **Whisper Model Configuration** (Optional - for faster processing):
     ```bash
     # Set environment variable for smaller/faster Whisper model
     set WHISPER_MODEL=tiny  # Windows

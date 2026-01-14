@@ -7,6 +7,7 @@ import random
 import time
 import yt_dlp
 import tempfile
+import subprocess
 
 sys.stdout.reconfigure(encoding='utf-8')
 os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -22,59 +23,123 @@ def safe_print(text):
         except:
             pass
 
-def download_streaming_video(url, temp_dir):
-    """Download streaming video (HLS/DASH) to temporary local file"""
-    safe_print("[Thumbnail] Downloading streaming video to temp file...")
+def download_youtube_video(url, temp_dir):
+    """Download YouTube video directly using yt-dlp (handles HLS/DASH properly)"""
+    safe_print("[Thumbnail] Downloading YouTube video...")
     
     timestamp = int(time.time())
-    base_name = f"video_{timestamp}"
-    base_path = os.path.join(temp_dir, base_name)
+    output_template = os.path.join(temp_dir, f"video_{timestamp}.%(ext)s")
     
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'best[height<=720][ext=mp4]/best[ext=mp4]/best',  # Prefer 720p or lower
         'quiet': False,
-        'no_warnings': True,
-        'outtmpl': base_path,  # No extension - yt-dlp adds it
-        'socket_timeout': 30,
+        'no_warnings': False,
+        'outtmpl': output_template,
+        'socket_timeout': 60,
         'http_chunk_size': 10485760,  # 10MB chunks
+        'retries': 3,  # Retry failed fragments
+        'fragment_retries': 10,  # Retry individual fragments
+        'skip_unavailable_fragments': True,  # Skip missing fragments instead of failing
+        'no_check_certificate': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'player_skip': ['js', 'configs', 'webpage'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
     }
     
     try:
+        safe_print("[Thumbnail] Starting download with yt-dlp...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.download([url])
-        
-        # yt-dlp adds extension automatically after download
-        # Check for files that were created
-        temp_files = []
-        if os.path.exists(temp_dir):
-            temp_files = os.listdir(temp_dir)
-            temp_files = [f for f in temp_files if f.startswith(base_name)]
-        
-        safe_print(f"[Thumbnail] Files in temp dir: {temp_files}")
-        
-        # Look for the most recently modified file with our base name
-        matching_files = []
-        for fname in temp_files:
-            fpath = os.path.join(temp_dir, fname)
-            if os.path.isfile(fpath):
-                size = os.path.getsize(fpath)
-                if size > 1000000:  # At least 1MB
-                    matching_files.append((fpath, size))
-        
-        if not matching_files:
-            raise Exception(f"No valid video file found. Temp files: {temp_files}")
-        
-        # Use the largest file
-        video_path = max(matching_files, key=lambda x: x[1])[0]
-        safe_print(f"[Thumbnail] Using downloaded file: {os.path.basename(video_path)} ({os.path.getsize(video_path) / 1024 / 1024:.1f} MB)")
-        
-        return video_path
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            if not os.path.exists(filename):
+                raise Exception(f"Downloaded file not found: {filename}")
+            
+            file_size = os.path.getsize(filename) / 1024 / 1024
+            
+            if file_size < 1:
+                raise Exception(f"Downloaded file is too small: {file_size:.1f} MB")
+            
+            safe_print(f"[Thumbnail] ✓ Downloaded successfully: {os.path.basename(filename)} ({file_size:.1f} MB)")
+            return filename
     
     except Exception as e:
-        safe_print(f"[Thumbnail] Download failed: {e}")
-        import traceback
-        traceback.print_exc()
+        safe_print(f"[Thumbnail] ✗ Download failed: {e}")
         raise
+
+def download_streaming_video_ffmpeg(url, temp_dir):
+    """
+    Fallback: Use FFmpeg to download streaming video directly.
+    More reliable for HLS/DASH streams.
+    """
+    safe_print("[Thumbnail] FFmpeg fallback: Downloading stream directly...")
+    
+    timestamp = int(time.time())
+    output_path = os.path.join(temp_dir, f"video_{timestamp}.mp4")
+    
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        '-i', url,
+        '-c:v', 'copy',  # Copy video codec (no re-encoding)
+        '-c:a', 'aac',   # Re-encode audio to AAC
+        '-bsf:a', 'aac_adtstoasc',  # AAC to MP4 conversion
+        '-y',  # Overwrite output file
+        output_path
+    ]
+    
+    try:
+        safe_print("[Thumbnail] Running FFmpeg download...")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            safe_print(f"[Thumbnail] FFmpeg error output: {result.stderr[-500:]}")
+            raise Exception(f"FFmpeg failed with code {result.returncode}")
+        
+        if not os.path.exists(output_path):
+            raise Exception("Output file not created by FFmpeg")
+        
+        file_size = os.path.getsize(output_path) / 1024 / 1024
+        
+        if file_size < 1:
+            raise Exception(f"Downloaded file too small: {file_size:.1f} MB")
+        
+        safe_print(f"[Thumbnail] ✓ FFmpeg download complete: {file_size:.1f} MB")
+        return output_path
+    
+    except subprocess.TimeoutExpired:
+        safe_print("[Thumbnail] FFmpeg timeout - stream may be too long or unstable")
+        raise Exception("Download timed out after 5 minutes")
+    except Exception as e:
+        safe_print(f"[Thumbnail] FFmpeg download failed: {e}")
+        raise
+
+def download_streaming_video(url, temp_dir):
+    """Download streaming video - tries yt-dlp first, then FFmpeg fallback"""
+    
+    # If it's a direct HLS/DASH URL (not YouTube)
+    if url.startswith('https://manifest.googlevideo.com') or '.m3u8' in url or '.mpd' in url:
+        safe_print("[Thumbnail] Detected HLS/DASH stream URL, using FFmpeg...")
+        return download_streaming_video_ffmpeg(url, temp_dir)
+    
+    # Try yt-dlp first (better for YouTube)
+    try:
+        return download_youtube_video(url, temp_dir)
+    except Exception as e:
+        safe_print(f"[Thumbnail] yt-dlp failed, trying FFmpeg fallback...")
+        try:
+            return download_streaming_video_ffmpeg(url, temp_dir)
+        except Exception as e2:
+            safe_print(f"[Thumbnail] Both methods failed:")
+            safe_print(f"  yt-dlp: {e}")
+            safe_print(f"  FFmpeg: {e2}")
+            raise Exception("Failed to download video with both yt-dlp and FFmpeg")
 
 def detect_scene_changes(video_path, threshold=25.0, max_scenes=5):
     """Detect scene boundaries using histogram difference"""
@@ -132,21 +197,40 @@ def detect_scene_changes(video_path, threshold=25.0, max_scenes=5):
     safe_print(f"[Thumbnail] Found {len(scenes)} scene changes")
     return scenes
 
-def score_frame_quality(frame, motion=0.0):
-    """Rate frame quality on multiple dimensions"""
+def score_frame_quality_strict(frame, motion=0.0):
+    """
+    STRICT quality scoring - rejects blurry/bad frames.
+    Returns 0.0 if frame fails quality checks.
+    """
     try:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        # 1. SHARPNESS CHECK (Most Important!)
         laplacian = cv2.Laplacian(gray, cv2.CV_64F)
         sharpness = laplacian.var()
-        sharpness_score = min(sharpness / 100, 1.0)
+        
+        if sharpness < 50:
+            return 0.0  # FAIL - Too blurry
+        
+        sharpness_score = min((sharpness - 50) / 450, 1.0)
 
+        # 2. BRIGHTNESS CHECK
         brightness = np.mean(gray)
+        
+        if brightness < 50 or brightness > 220:
+            return 0.0  # FAIL - Bad lighting
+        
         brightness_score = 1 - abs(brightness - 128) / 128
 
+        # 3. CONTRAST CHECK
         contrast = np.std(gray)
-        contrast_score = min(contrast / 50, 1.0)
+        
+        if contrast < 20:
+            return 0.0  # FAIL - No contrast
+        
+        contrast_score = min(contrast / 80, 1.0)
 
+        # 4. FACE DETECTION
         face_score = 0.3
         try:
             face_cascade = cv2.CascadeClassifier(
@@ -158,22 +242,79 @@ def score_frame_quality(frame, motion=0.0):
         except:
             pass
 
-        motion_score = 1 - min(motion / 50, 1.0)
+        # 5. MOTION CHECK
+        if motion > 50:
+            return 0.0  # FAIL - Too much motion blur
+        
+        motion_score = max(0, 1 - (motion / 30))
 
+        # FINAL SCORE
         score = (
-            sharpness_score * 0.25 +
-            brightness_score * 0.2 +
-            contrast_score * 0.2 +
-            face_score * 0.25 +
-            motion_score * 0.1
+            sharpness_score * 0.40 +
+            contrast_score * 0.20 +
+            brightness_score * 0.15 +
+            face_score * 0.15 +
+            motion_score * 0.10
         )
-
+        
         return float(score)
+    
     except:
         return 0.0
 
+def score_frame_quality_relaxed(frame, motion=0.0):
+    """
+    RELAXED quality scoring - used when strict filtering doesn't yield enough frames.
+    Doesn't hard-reject frames, scores them more leniently.
+    """
+    try:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Sharpness (relaxed threshold)
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        sharpness = laplacian.var()
+        sharpness_score = min(max(0, (sharpness - 30) / 300), 1.0)
+        
+        # Brightness (wider range allowed)
+        brightness = np.mean(gray)
+        brightness_score = 1 - abs(brightness - 128) / 150
+        brightness_score = max(0.1, min(brightness_score, 1.0))
+        
+        # Contrast (relaxed)
+        contrast = np.std(gray)
+        contrast_score = min(max(0, (contrast - 10) / 80), 1.0)
+        
+        # Face detection
+        face_score = 0.2
+        try:
+            face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+            faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
+            if len(faces) > 0:
+                face_score = 0.8
+        except:
+            pass
+
+        # Motion (relaxed)
+        motion_score = max(0, 1 - (motion / 50))
+        
+        # Final score (no hard rejection)
+        score = (
+            sharpness_score * 0.30 +
+            contrast_score * 0.20 +
+            brightness_score * 0.20 +
+            face_score * 0.20 +
+            motion_score * 0.10
+        )
+        
+        return float(max(0.05, score))
+    
+    except:
+        return 0.1
+
 def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
-    """Generate smart thumbnails from video"""
+    """Generate MINIMUM 10 thumbnails from video with smart quality filtering"""
     
     # If it's a streaming URL, download it first
     if video_path.startswith('http'):
@@ -205,6 +346,7 @@ def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
     
     os.makedirs(output_dir, exist_ok=True)
     
+    # Detect scene changes
     scenes = detect_scene_changes(video_path, threshold=15.0, max_scenes=15)
     sample_positions = [int(s['timestamp'] * fps) for s in scenes]
 
@@ -223,7 +365,7 @@ def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
     sample_positions = list(set(sample_positions))
     random.shuffle(sample_positions)
     sample_positions = sample_positions[:num_candidates]
-    safe_print(f"[Thumbnail] Sampling {len(sample_positions)} candidate frames...")
+    safe_print(f"[Thumbnail] Sampling {len(sample_positions)} candidate frames...\n")
     
     candidates = []
     prev_gray = None
@@ -250,36 +392,89 @@ def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
                 motion = 0.0
             
             prev_gray = gray
-            score = score_frame_quality(frame, motion)
+            score = score_frame_quality_strict(frame, motion)
             
-            candidates.append({
-                'frame': frame,
-                'score': score,
-                'position': pos,
-                'timestamp': pos / fps if fps > 0 else 0,
-                'motion': motion
-            })
+            # Only add if passed strict quality check
+            if score > 0:
+                candidates.append({
+                    'frame': frame,
+                    'score': score,
+                    'position': pos,
+                    'timestamp': pos / fps if fps > 0 else 0,
+                    'motion': motion
+                })
         
         except Exception as e:
-            safe_print(f"[Thumbnail] Error sampling frame {idx}: {e}")
             continue
     
     cap.release()
     
+    safe_print(f"[Thumbnail] Strict filter: {len(candidates)} frames passed quality checks")
+    
+    # ====================================================
+    # FALLBACK: If < 10 frames, use relaxed scoring
+    # ====================================================
+    if len(candidates) < 10:
+        safe_print(f"[Thumbnail] ⚠ Only {len(candidates)} high-quality frames found")
+        safe_print(f"[Thumbnail] Re-scanning with RELAXED threshold...")
+        
+        cap = cv2.VideoCapture(video_path)
+        prev_gray = None
+        
+        for pos in sample_positions:
+            try:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+                ret, frame = cap.read()
+                
+                if not ret or frame is None:
+                    continue
+                
+                h, w = frame.shape[:2]
+                if w > 640:
+                    scale = 640 / float(w)
+                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+                
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                if prev_gray is not None:
+                    diff = cv2.absdiff(prev_gray, gray)
+                    motion = float(diff.mean())
+                else:
+                    motion = 0.0
+                
+                prev_gray = gray
+                score = score_frame_quality_relaxed(frame, motion)
+                
+                # Check if already in candidates
+                if not any(c['position'] == pos for c in candidates):
+                    candidates.append({
+                        'frame': frame,
+                        'score': score,
+                        'position': pos,
+                        'timestamp': pos / fps if fps > 0 else 0,
+                        'motion': motion
+                    })
+            except:
+                continue
+        
+        cap.release()
+        safe_print(f"[Thumbnail] ✓ Relaxed filter: Now have {len(candidates)} total candidates")
+    
     if not candidates:
-        safe_print("[Thumbnail] ERROR: No frames could be sampled")
+        safe_print("[Thumbnail] ERROR: No candidates found even with relaxed threshold")
         return 0
     
-    safe_print(f"[Thumbnail] Evaluated {len(candidates)} frames")
-    
+    # Sort by quality score
     candidates.sort(key=lambda x: x['score'], reverse=True)
-    top_candidates = candidates[:20]
-    random.shuffle(top_candidates)
-    best_frames = top_candidates[:10]
     
-    best_frames.sort(key=lambda x: x['position'])
+    # Ensure MINIMUM 10 thumbnails
+    num_to_save = max(10, min(len(candidates), 15))
+    top_candidates = candidates[:num_to_save]
     
-    safe_print(f"[Thumbnail] Saving top 10 thumbnails...")
+    # Sort by timestamp (chronological order for diverse coverage)
+    best_frames = sorted(top_candidates, key=lambda x: x['position'])
+    
+    safe_print(f"[Thumbnail] Saving {len(best_frames)} thumbnails...\n")
     saved_count = 0
     
     for i, item in enumerate(best_frames):
@@ -293,7 +488,8 @@ def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
             )
             
             if success:
-                safe_print(f"  [{i+1}] thumb_{i+1:02d}.jpg (score: {item['score']:.3f}, time: {item['timestamp']:.1f}s)")
+                safe_print(f"  [{i+1:2d}] thumb_{i+1:02d}.jpg")
+                safe_print(f"       └─ Score: {item['score']:.3f} | Time: {item['timestamp']:.1f}s")
                 saved_count += 1
             else:
                 safe_print(f"  [!] Failed to save thumb_{i+1:02d}.jpg")
@@ -301,7 +497,7 @@ def generate_smart_thumbnails(video_path, output_dir, num_candidates=20):
         except Exception as e:
             safe_print(f"  [!] Error saving thumbnail {i+1}: {e}")
     
-    safe_print(f"✓ Generated {saved_count} thumbnails")
+    safe_print(f"\n✓ Generated {saved_count} thumbnails")
     return saved_count
 
 def main():
@@ -315,7 +511,7 @@ def main():
     
     try:
         count = generate_smart_thumbnails(video_path, output_dir, num_candidates)
-        sys.exit(0 if count > 0 else 1)
+        sys.exit(0 if count >= 10 else 1)
     except Exception as e:
         safe_print(f"[Thumbnail] FATAL ERROR: {e}")
         import traceback

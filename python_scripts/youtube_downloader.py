@@ -12,10 +12,19 @@ def get_video_stream_url(url):
     """Extract direct stream URL without downloading the entire file"""
     
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'best[ext=mp4]/best[height<=720]/best',
         'quiet': True,
-        'no_warnings': True,
+        'no_warnings': False,  # Changed to False to see warnings
         'socket_timeout': 30,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'player_skip': ['js', 'configs', 'webpage'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
