@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { Button, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Box, Grid, Card, CardContent, IconButton, Chip, ToggleButton, ToggleButtonGroup, Input, FormControl, FormLabel,Typography } from '@mui/material'
-import { Close as CloseIcon, PlayArrow, Edit, Visibility, YouTube, UploadFile } from '@mui/icons-material'
 
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
@@ -262,313 +260,358 @@ function ContentGeneration() {
   }
 
   return (
-    <>
+    <div style={{
+      width: '100%',
+      minHeight: '100vh',
+      background: 'linear-gradient(to bottom right, #0f172a, #1e293b)',
+      padding: '24px',
+      color: '#fff'
+    }}>
       {/* Input Section */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Input Options
-          </Typography>
-          <Box sx={{ mb: 2 }}>
-            <ToggleButtonGroup
-              value={processingMode}
-              exclusive
-              onChange={(event, newMode) => {
-                if (newMode) {
-                  setProcessingMode(newMode);
-                  if (newMode === 'url') setVideoFile(null);
-                  else setVideoUrl('');
-                }
-              }}
-              aria-label="processing mode"
-            >
-              <ToggleButton value="url" aria-label="YouTube URL">
-                <YouTube sx={{ mr: 1 }} />
-                YouTube URL
-              </ToggleButton>
-              <ToggleButton value="upload" aria-label="Upload Video">
-                <UploadFile sx={{ mr: 1 }} />
-                Upload Video
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
+      <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+        <h2 className="text-xl font-semibold mb-4 text-white">Input Options</h2>
 
-          {processingMode === 'url' ? (
-            <TextField
-              label="YouTube URL"
+        {/* Mode Toggle */}
+        <div className="mb-4">
+          <div className="flex space-x-2">
+            <button
+              onClick={() => {
+                setProcessingMode('url');
+                setVideoFile(null);
+              }}
+              className={`px-4 py-2 rounded-md flex items-center ${
+                processingMode === 'url'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              📺 YouTube URL
+            </button>
+            <button
+              onClick={() => {
+                setProcessingMode('upload');
+                setVideoUrl('');
+              }}
+              className={`px-4 py-2 rounded-md flex items-center ${
+                processingMode === 'upload'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              📁 Upload Video
+            </button>
+          </div>
+        </div>
+
+        {/* URL Input */}
+        {processingMode === 'url' ? (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              YouTube URL
+            </label>
+            <input
+              type="text"
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="Enter YouTube URL"
-              fullWidth
-              sx={{ mb: 2 }}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          ) : (
-            <Box sx={{ mb: 2 }}>
-              <FormControl fullWidth>
-                <FormLabel>Upload Video File</FormLabel>
-                <Input
-                  type="file"
-                  accept="video/*"
-                  onChange={handleFileSelect}
-                  sx={{ mt: 1 }}
-                />
-              </FormControl>
-              {videoPreview && (
-                <Card sx={{ mt: 2, p: 2 }}>
-                  <Typography variant="body2">📁 {videoFile?.name}</Typography>
-                  <Typography variant="body2">Size: {(videoFile?.size / 1024 / 1024 / 1024).toFixed(2)} GB</Typography>
-                  <Box sx={{ mt: 1 }}>
-                    <video width="200" height="120" controls>
-                      <source src={videoPreview} type="video/mp4" />
-                    </video>
-                  </Box>
-                </Card>
-              )}
-            </Box>
-          )}
+          </div>
+        ) : (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Upload Video File
+            </label>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={handleFileSelect}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white file:bg-gray-600 file:text-white file:border-none file:rounded-md file:px-3 file:py-1 file:mr-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {videoPreview && (
+              <div className="mt-4 p-4 bg-gray-700 rounded-md border border-gray-600">
+                <p className="text-sm text-gray-300">📁 {videoFile?.name}</p>
+                <p className="text-sm text-gray-300">Size: {(videoFile?.size / 1024 / 1024 / 1024).toFixed(2)} GB</p>
+                <div className="mt-2">
+                  <video width="200" height="120" controls>
+                    <source src={videoPreview} type="video/mp4" />
+                  </video>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-            <Button
-              variant="contained"
-              onClick={processVideo}
-              disabled={!isProcessingReady || loading.process}
-              fullWidth
-            >
-              {loading.process ? '⏳ Processing All...' : '🚀 Process All (Thumbnails, Trailer, Subtitles, Metadata)'}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={generateThumbnails}
-              disabled={!isProcessingReady || loading.thumbnails}
-            >
-              {loading.thumbnails ? '⏳ Generating...' : '🖼️ Generate Thumbnails'}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={generateTrailer}
-              disabled={!isProcessingReady || loading.trailer}
-            >
-              {loading.trailer ? '⏳ Generating...' : '🎥 Generate Trailer'}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={generateSubtitles}
-              disabled={!isProcessingReady || loading.subtitles}
-            >
-              {loading.subtitles ? '⏳ Generating...' : '📝 Generate Subtitles'}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={generateMetadata}
-              disabled={!isProcessingReady || loading.metadata}
-            >
-              {loading.metadata ? '⏳ Generating...' : '📋 Generate Metadata'}
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button
+            onClick={processVideo}
+            disabled={!isProcessingReady || loading.process}
+            className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:text-gray-400"
+          >
+            {loading.process ? '⏳ Processing All...' : '🚀 Process All (Thumbnails, Trailer, Subtitles, Metadata)'}
+          </button>
+          <button
+            onClick={generateThumbnails}
+            disabled={!isProcessingReady || loading.thumbnails}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+          >
+            {loading.thumbnails ? '⏳ Generating...' : '🖼️ Generate Thumbnails'}
+          </button>
+          <button
+            onClick={generateTrailer}
+            disabled={!isProcessingReady || loading.trailer}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+          >
+            {loading.trailer ? '⏳ Generating...' : '🎥 Generate Trailer'}
+          </button>
+          <button
+            onClick={generateSubtitles}
+            disabled={!isProcessingReady || loading.subtitles}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+          >
+            {loading.subtitles ? '⏳ Generating...' : '📝 Generate Subtitles'}
+          </button>
+          <button
+            onClick={generateMetadata}
+            disabled={!isProcessingReady || loading.metadata}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
+          >
+            {loading.metadata ? '⏳ Generating...' : '📋 Generate Metadata'}
+          </button>
+        </div>
+      </div>
 
       {/* Videos Table */}
       {videos.length > 0 && (
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              📊 Generated Videos
-            </Typography>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Source</TableCell>
-                    <TableCell>Title</TableCell>
-                    <TableCell>Thumbnails</TableCell>
-                    <TableCell>Trailer</TableCell>
-                    <TableCell>Subtitles</TableCell>
-                    <TableCell>Metadata</TableCell>
-                    <TableCell>Date</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {videos.map(video => (
-                    <TableRow key={video._id}>
-                      <TableCell>
-                        <Chip
-                          label={video.type === 'youtube' ? 'YouTube' : 'Upload'}
-                          icon={video.type === 'youtube' ? <YouTube /> : <UploadFile />}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>{video.title || '—'}</TableCell>
-                      <TableCell>
-                        {video.generated.thumbnails ? (
-                          <>
-                            <Chip label="✓" color="success" size="small" sx={{ mr: 1 }} />
-                            <Button size="small" onClick={() => openThumbnailModal(video)}>
-                              View ({video.thumbnails.length})
-                            </Button>
-                          </>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {video.generated.trailer ? (
-                          <>
-                            <Chip label="✓" color="success" size="small" sx={{ mr: 1 }} />
-                            <IconButton size="small" onClick={() => openTrailerModal(video)}>
-                              <PlayArrow />
-                            </IconButton>
-                          </>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {video.generated.subtitles ? (
-                          <>
-                            <Chip label="✓" color="success" size="small" sx={{ mr: 1 }} />
-                            <Button size="small" onClick={() => openSubtitleModal(video)}>
-                              View
-                            </Button>
-                          </>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {video.generated.metadata ? (
-                          <>
-                            <Chip label="✓" color="success" size="small" sx={{ mr: 1 }} />
-                            <IconButton size="small" onClick={() => openMetadataModal(video)}>
-                              <Edit />
-                            </IconButton>
-                          </>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell>{new Date(video.createdAt).toLocaleDateString()}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </CardContent>
-        </Card>
+        <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+          <h2 className="text-xl font-semibold mb-4 text-white">📊 Generated Videos</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full table-auto">
+              <thead>
+                <tr className="bg-gray-700">
+                  <th className="px-4 py-2 text-left text-gray-300">Source</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Title</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Thumbnails</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Trailer</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Subtitles</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Metadata</th>
+                  <th className="px-4 py-2 text-left text-gray-300">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {videos.map(video => (
+                  <tr key={video._id} className="border-t border-gray-600">
+                    <td className="px-4 py-2">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        video.type === 'youtube'
+                          ? 'bg-red-900 text-red-200'
+                          : 'bg-blue-900 text-blue-200'
+                      }`}>
+                        {video.type === 'youtube' ? '📺 YouTube' : '📁 Upload'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-gray-300">{video.title || '—'}</td>
+                    <td className="px-4 py-2">
+                      {video.generated.thumbnails ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-200">✓</span>
+                          <button
+                            onClick={() => openThumbnailModal(video)}
+                            className="text-blue-400 hover:text-blue-300 text-sm"
+                          >
+                            View ({video.thumbnails.length})
+                          </button>
+                        </div>
+                      ) : <span className="text-gray-500">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {video.generated.trailer ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-200">✓</span>
+                          <button
+                            onClick={() => openTrailerModal(video)}
+                            className="text-blue-400 hover:text-blue-300"
+                          >
+                            ▶️
+                          </button>
+                        </div>
+                      ) : <span className="text-gray-500">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {video.generated.subtitles ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-200">✓</span>
+                          <button
+                            onClick={() => openSubtitleModal(video)}
+                            className="text-blue-400 hover:text-blue-300 text-sm"
+                          >
+                            View
+                          </button>
+                        </div>
+                      ) : <span className="text-gray-500">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {video.generated.metadata ? (
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-900 text-green-200">✓</span>
+                          <button
+                            onClick={() => openMetadataModal(video)}
+                            className="text-blue-400 hover:text-blue-300"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      ) : <span className="text-gray-500">—</span>}
+                    </td>
+                    <td className="px-4 py-2 text-gray-300">{new Date(video.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Thumbnails Modal */}
-      <Dialog open={showThumbnailModal} onClose={closeModal} maxWidth="md" fullWidth>
-        <DialogTitle>
-          🖼️ Thumbnails
-          <IconButton
-            aria-label="close"
-            onClick={closeModal}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2}>
-            {currentModalData?.thumbnails.map((thumb, i) => (
-              <Grid item xs={6} sm={4} md={3} key={i}>
-                <Card>
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <img src={thumb.dataUrl} alt={`Thumb ${i+1}`} style={{ width: '100%', height: 'auto' }} />
-                    <Typography variant="body2">#{i + 1}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </DialogContent>
-      </Dialog>
+      {showThumbnailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-semibold">🖼️ Thumbnails</h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {currentModalData?.thumbnails.map((thumb, i) => (
+                  <div key={i} className="bg-gray-50 rounded-lg p-4 text-center">
+                    <img src={thumb.dataUrl} alt={`Thumb ${i+1}`} className="w-full h-auto rounded" />
+                    <p className="text-sm mt-2">#{i + 1}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Trailer Modal */}
-      <Dialog open={showTrailerModal} onClose={closeModal} maxWidth="md" fullWidth>
-        <DialogTitle>
-          🎬 Trailer
-          <IconButton
-            aria-label="close"
-            onClick={closeModal}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            <video controls style={{ maxWidth: '100%', height: 'auto' }}>
-              <source src={`${API_BASE}/api/videos/trailer/${currentModalData?._id}`} type="video/mp4" />
-            </video>
-          </Box>
-        </DialogContent>
-      </Dialog>
+      {showTrailerModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full mx-4">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-semibold">🎬 Trailer</h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex justify-center">
+                <video controls className="max-w-full h-auto">
+                  <source src={`${API_BASE}/api/videos/trailer/${currentModalData?._id}`} type="video/mp4" />
+                </video>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Subtitles Modal */}
-      <Dialog open={showSubtitleModal} onClose={closeModal} maxWidth="md" fullWidth>
-        <DialogTitle>
-          📝 Subtitles
-          <IconButton
-            aria-label="close"
-            onClick={closeModal}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-            {currentModalData?.subtitles?.content}
-          </Typography>
-        </DialogContent>
-      </Dialog>
+      {showSubtitleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-semibold">📝 Subtitles</h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded">
+                {currentModalData?.subtitles?.content}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Metadata Modal */}
-      <Dialog open={showMetadataModal} onClose={closeModal} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          📋 Edit Metadata
-          <IconButton
-            aria-label="close"
-            onClick={closeModal}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Title"
-            value={editingMetadata?.title || ''}
-            onChange={(e) => setEditingMetadata({ ...editingMetadata, title: e.target.value })}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Description"
-            value={editingMetadata?.description || ''}
-            onChange={(e) => setEditingMetadata({ ...editingMetadata, description: e.target.value })}
-            fullWidth
-            multiline
-            rows={4}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Genre"
-            value={editingMetadata?.genre || ''}
-            onChange={(e) => setEditingMetadata({ ...editingMetadata, genre: e.target.value })}
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Tags"
-            value={editingMetadata?.tags?.join(', ') || ''}
-            onChange={(e) => setEditingMetadata({ ...editingMetadata, tags: e.target.value.split(',').map(t => t.trim()) })}
-            placeholder="comma separated"
-            fullWidth
-            sx={{ mb: 2 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={saveMetadata} variant="contained">
-            💾 Save Changes
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+      {showMetadataModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full mx-4">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-xl font-semibold">📋 Edit Metadata</h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <input
+                    type="text"
+                    value={editingMetadata?.title || ''}
+                    onChange={(e) => setEditingMetadata({ ...editingMetadata, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    value={editingMetadata?.description || ''}
+                    onChange={(e) => setEditingMetadata({ ...editingMetadata, description: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Genre</label>
+                  <input
+                    type="text"
+                    value={editingMetadata?.genre || ''}
+                    onChange={(e) => setEditingMetadata({ ...editingMetadata, genre: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                  <input
+                    type="text"
+                    value={editingMetadata?.tags?.join(', ') || ''}
+                    onChange={(e) => setEditingMetadata({ ...editingMetadata, tags: e.target.value.split(',').map(t => t.trim()) })}
+                    placeholder="comma separated"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end p-6 border-t bg-gray-50">
+              <button
+                onClick={saveMetadata}
+                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              >
+                💾 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

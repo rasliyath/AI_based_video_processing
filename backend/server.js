@@ -22,6 +22,7 @@ app.disable('x-powered-by');
 
 // Routes
 app.use("/api/videos", require("./routes/videoRoutes"));
+app.use('/api/qoe', require("./routes/qoe"));
 
 // MongoDB connection
 mongoose
