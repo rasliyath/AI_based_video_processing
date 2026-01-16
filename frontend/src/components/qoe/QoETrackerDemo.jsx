@@ -47,7 +47,7 @@ const QoETrackerDemo = () => {
   const videoIdRef = useRef("dQw4w9WgXcQ"); // ← Ref for current videoId
   const totalWatchTimeRef = useRef(0); // ← Ref for total watch time
 
-  const apiUrl = "http://localhost:5000/api/qoe";
+  const apiUrl = `${import.meta.env.VITE_API_BASE}/api/qoe`;
 
   // ============= SESSION MANAGEMENT =============
   const startSession = async () => {
