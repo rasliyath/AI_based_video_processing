@@ -303,11 +303,15 @@ router.get('/analytics', async (req, res) => {
     const totalBufferingTime = sessions.reduce((sum, s) => sum + (s.totalBufferingTime || 0), 0);
     const totalErrors = sessions.reduce((sum, s) => sum + (s.totalErrors || 0), 0);
     const totalQualityChanges = sessions.reduce((sum, s) => sum + (s.totalQualityChanges || 0), 0);
+    const totalWatchDuration = sessions.reduce((sum, s) => sum + (s.totalWatchDuration || 0), 0);
 
     // Calculate percentages
     const totalSessionDuration = sessions.reduce((sum, s) => sum + (s.totalSessionDuration || 0), 0);
     const bufferingPercentage = totalSessionDuration > 0 ? ((totalBufferingTime / totalSessionDuration) * 100).toFixed(2) : 0;
     const errorPercentage = totalSessionDuration > 0 ? ((totalErrors / totalSessionDuration) * 100).toFixed(2) : 0;
+
+    // Calculate averages
+    const avgWatchDuration = totalEvents > 0 ? (totalWatchDuration / totalEvents).toFixed(2) : 0;
 
     // Unique users and videos
     const uniqueUsers = new Set(sessions.map(s => s.userId));
@@ -344,6 +348,7 @@ router.get('/analytics', async (req, res) => {
       userCount: uniqueUsers.size,
       videoCount: uniqueVideos.size,
       totalQualityChanges,
+      avgWatchDuration: parseFloat(avgWatchDuration),
       deviceBreakdown,
       networkTypeBreakdown: networkBreakdown,
       topErrorCodes: errorBreakdown

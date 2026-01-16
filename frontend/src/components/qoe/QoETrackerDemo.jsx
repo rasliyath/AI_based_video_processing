@@ -44,6 +44,8 @@ const QoETrackerDemo = () => {
   const lastQualityRef = useRef(null);
   const isStartingSessionRef = useRef(false); // ← CRITICAL: Prevent duplicate sessions
   const sessionIdRef = useRef(null);
+  const videoIdRef = useRef("dQw4w9WgXcQ"); // ← Ref for current videoId
+  const totalWatchTimeRef = useRef(0); // ← Ref for total watch time
 
   const apiUrl = "http://localhost:5000/api/qoe";
 
@@ -64,9 +66,9 @@ const QoETrackerDemo = () => {
         .substr(2, 9)}`;
 
       const payload = {
-        sessionId: newSessionId, 
-        userId: "test_user_123",
-        videoId: videoId,
+        sessionId: newSessionId,
+        userId: "test_user_1235",
+        videoId: videoIdRef.current,
         videoTitle: "YouTube Video",
         deviceInfo: {
           type: navigator.userAgent.includes("Mobile") ? "mobile" : "desktop",
@@ -121,8 +123,8 @@ const QoETrackerDemo = () => {
 
     try {
       const payload = {
-        userId: "test_user_123",
-        videoId: videoId,
+        userId: "test_user_1235",
+        videoId: videoIdRef.current,
         eventType: eventType,
         eventData: eventData,
       };
@@ -162,7 +164,7 @@ const QoETrackerDemo = () => {
       );
 
       const payload = {
-        totalWatchDuration: stats.totalWatchTime,
+        totalWatchDuration: totalWatchTimeRef.current,
         completedPercentage: completedPercentage,
         lastPlaybackPosition: currentTime,
         bufferingEvents: bufferingEventsRef.current,
@@ -215,6 +217,8 @@ const QoETrackerDemo = () => {
         id = urlParams.get("v");
       } else if (url.includes("youtu.be/")) {
         id = url.split("youtu.be/")[1].split("?")[0];
+      } else if (url.includes("youtube.com/shorts/")) {
+        id = url.split("youtube.com/shorts/")[1].split("?")[0];
       } else if (url.length === 11 && !url.includes("/")) {
         id = url;
       }
@@ -247,6 +251,7 @@ const QoETrackerDemo = () => {
   const handleLoadVideo = () => {
     const extractedId = extractVideoId(videoUrl);
     if (extractedId) {
+      videoIdRef.current = extractedId; // Update ref immediately
       setVideoId(extractedId);
       setSessionId(null);
       setEvents([]);
@@ -265,6 +270,7 @@ const QoETrackerDemo = () => {
       sessionStartTimeRef.current = null;
       setSessionId(null);
       isStartingSessionRef.current = false;
+      totalWatchTimeRef.current = 0; // Reset watch time ref
 
       console.log("🎬 Loading Video:", { videoId: extractedId, url: videoUrl });
 
@@ -409,9 +415,10 @@ const QoETrackerDemo = () => {
       if (!timerRef.current) {
         timerRef.current = setInterval(() => {
           if (window.player && window.player.getPlayerState() === 1) {
+            totalWatchTimeRef.current += 1;
             setStats((prev) => ({
               ...prev,
-              totalWatchTime: prev.totalWatchTime + 1,
+              totalWatchTime: totalWatchTimeRef.current,
               videoTime: Math.floor(window.player.getCurrentTime()),
             }));
           }
@@ -583,6 +590,8 @@ const QoETrackerDemo = () => {
     setDbEvents(0);
     isStartingSessionRef.current = false;
     sessionIdRef.current = null;
+    videoIdRef.current = "dQw4w9WgXcQ"; // Reset to default
+    totalWatchTimeRef.current = 0; // Reset watch time ref
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -810,7 +819,7 @@ const QoETrackerDemo = () => {
             </button>
           </div>
           <p style={{ color: "#94a3b8", fontSize: "12px" }}>
-            Supports: Full URLs, Short URLs (youtu.be), or Video IDs
+            Supports: Full URLs, Short URLs (youtu.be), Shorts, or Video IDs
           </p>
           {sessionId && (
             <p style={{ color: "#10b981", fontSize: "11px", marginTop: "8px" }}>
@@ -1308,17 +1317,17 @@ const QoETrackerDemo = () => {
               <strong>End Session:</strong> Automatically ends when video
               finishes
             </li>
-            <li>
+            {/* <li>
               <strong>View Details:</strong> Click "Session Details" to see
               aggregated metrics
             </li>
             <li>
               <strong>View Analytics:</strong> Click "Analytics" to see all
               sessions for this video
-            </li>
+            </li> */}
           </ol>
 
-          <div
+          {/* <div
             style={{
               background: "rgba(0,0,0,0.2)",
               padding: "12px",
@@ -1340,7 +1349,7 @@ const QoETrackerDemo = () => {
               ✅ 20x faster queries
               <br />✅ Ready for analytics dashboard
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

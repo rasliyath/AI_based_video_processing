@@ -149,7 +149,7 @@ const QoEDashboard = () => {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <div className="bg-slate-700 p-6 rounded-lg border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
@@ -190,6 +190,17 @@ const QoEDashboard = () => {
                 <p className="text-xs text-slate-400 mt-1">{dashboardData.videoCount} videos</p>
               </div>
               <Users className="text-green-400" size={40} />
+            </div>
+          </div>
+
+          <div className="bg-slate-700 p-6 rounded-lg border-l-4 border-purple-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-400 text-sm">Avg Watch Duration</p>
+                <p className="text-3xl font-bold text-white">{Math.floor(dashboardData.avgWatchDuration / 60)}:{(dashboardData.avgWatchDuration % 60).toFixed(0).padStart(2, '0')}</p>
+                <p className="text-xs text-slate-400 mt-1">{dashboardData.avgWatchDuration}s average</p>
+              </div>
+              <TrendingUp className="text-purple-400" size={40} />
             </div>
           </div>
         </div>
