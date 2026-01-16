@@ -101,11 +101,13 @@ const qoeSessionSchema = new mongoose.Schema({
     default: 'desktop'
   },
   osInfo: String,
+  appVersion: String,  // Browser version for web
   networkType: {
     type: String,
     enum: ['2g', '3g', '4g', '5g', 'wifi', 'unknown'],
     default: 'unknown'
   },
+  cdnEndpoint: String,  // CDN used (e.g., YouTube CDN)
   userAgent: String,
 
   // QoE Score (0-100)

@@ -15,7 +15,9 @@ router.post('/session/start', async (req, res) => {
       videoTitle,
       deviceType: deviceInfo?.type || 'desktop',
       osInfo: deviceInfo?.os,
+      appVersion: deviceInfo?.appVersion,
       networkType: networkType || 'unknown',
+      cdnEndpoint: cdnEndpoint || 'unknown',
       userAgent: req.get('user-agent'),
       status: 'active'
     });
@@ -46,7 +48,7 @@ router.post('/session/:sessionId/event', async (req, res) => {
     const { userId, videoId, eventType, eventData } = req.body;
 
     // Only store critical events
-    const criticalEvents = ['buffering_start', 'buffering_end', 'quality_change', 'error'];
+    const criticalEvents = ['buffering_start', 'buffering_end', 'quality_change', 'error', 'crash'];
     
     if (!criticalEvents.includes(eventType)) {
       return res.status(400).json({
@@ -339,6 +341,9 @@ router.get('/analytics', async (req, res) => {
       }
     });
 
+    // Crash count
+    const totalCrashes = await QoEEvent.countDocuments({ eventType: 'crash' });
+
     const analytics = {
       totalEvents,
       totalBufferingEvents,
@@ -349,6 +354,7 @@ router.get('/analytics', async (req, res) => {
       videoCount: uniqueVideos.size,
       totalQualityChanges,
       avgWatchDuration: parseFloat(avgWatchDuration),
+      totalCrashes,
       deviceBreakdown,
       networkTypeBreakdown: networkBreakdown,
       topErrorCodes: errorBreakdown

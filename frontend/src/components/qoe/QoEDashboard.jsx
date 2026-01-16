@@ -78,10 +78,13 @@ const QoEDashboard = () => {
     value: count
   }));
 
-  const errorData = Object.entries(dashboardData.topErrorCodes || {}).map(([code, count]) => ({
-    name: `Error ${code}`,
-    value: count
-  }));
+  const errorData = [
+    ...Object.entries(dashboardData.topErrorCodes || {}).map(([code, count]) => ({
+      name: `Error ${code}`,
+      value: count
+    })),
+    ...(dashboardData.totalCrashes > 0 ? [{ name: 'Crashes', value: dashboardData.totalCrashes }] : [])
+  ];
 
   const timelineData = [
     { time: '00:00', events: Math.floor(dashboardData.totalEvents * 0.05) },

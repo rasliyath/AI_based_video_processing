@@ -19,7 +19,7 @@ const qoeEventSchema = new mongoose.Schema({
   // Only store critical event types
   eventType: {
     type: String,
-    enum: ['buffering_start', 'buffering_end', 'quality_change', 'error', 'session_end'],
+    enum: ['buffering_start', 'buffering_end', 'quality_change', 'error', 'crash', 'session_end'],
     required: true
   },
 
@@ -36,6 +36,14 @@ const qoeEventSchema = new mongoose.Schema({
     // For errors
     errorCode: String,
     errorMessage: String,
+
+    // For crashes
+    message: String,
+    source: String,
+    lineno: Number,
+    colno: Number,
+    stack: String,
+    userAgent: String,
 
     // Position in video
     videoTime: Number

@@ -73,8 +73,10 @@ const QoETrackerDemo = () => {
         deviceInfo: {
           type: navigator.userAgent.includes("Mobile") ? "mobile" : "desktop",
           os: getOS(),
+          appVersion: getBrowserVersion(),
         },
         networkType: getNetworkType(),
+        cdnEndpoint: getCDNEndpoint(),
       };
 
       console.log("🎬 Starting Session:", {
@@ -248,6 +250,30 @@ const QoETrackerDemo = () => {
     return navigator.onLine ? "wifi" : "unknown";
   };
 
+  const getBrowserVersion = () => {
+    const ua = navigator.userAgent;
+    let version = "Unknown";
+    if (ua.includes("Chrome")) {
+      const match = ua.match(/Chrome\/(\d+)/);
+      version = match ? `Chrome ${match[1]}` : "Chrome";
+    } else if (ua.includes("Firefox")) {
+      const match = ua.match(/Firefox\/(\d+)/);
+      version = match ? `Firefox ${match[1]}` : "Firefox";
+    } else if (ua.includes("Safari") && !ua.includes("Chrome")) {
+      const match = ua.match(/Version\/(\d+)/);
+      version = match ? `Safari ${match[1]}` : "Safari";
+    } else if (ua.includes("Edge")) {
+      const match = ua.match(/Edge\/(\d+)/);
+      version = match ? `Edge ${match[1]}` : "Edge";
+    }
+    return version;
+  };
+
+  const getCDNEndpoint = () => {
+    // For YouTube, CDN is abstracted; return generic
+    return "YouTube CDN";
+  };
+
   const handleLoadVideo = () => {
     const extractedId = extractVideoId(videoUrl);
     if (extractedId) {
@@ -304,8 +330,24 @@ const QoETrackerDemo = () => {
       window.onYouTubeIframeAPIReady = () => initPlayer(videoId);
     }
 
+    // Crash tracking
+    const handleError = (message, source, lineno, colno, error) => {
+      console.error("🚨 App Crash Detected:", { message, source, lineno, colno, error });
+      recordCriticalEvent("crash", {
+        message: String(message),
+        source,
+        lineno,
+        colno,
+        stack: error?.stack,
+        userAgent: navigator.userAgent,
+      });
+    };
+
+    window.addEventListener('error', handleError);
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      window.removeEventListener('error', handleError);
     };
   }, []);
 
