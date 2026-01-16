@@ -13,15 +13,15 @@ app.use(cors());
 app.use(express.json());
 
 // Serve static assets (thumbnails, trailers, uploads)
-app.use('/thumbnails', express.static(path.join(__dirname, 'thumbnails')));
-app.use('/trailers', express.static(path.join(__dirname, 'trailers')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// app.use('/thumbnails', express.static(path.join(__dirname, 'thumbnails')));
+// app.use('/trailers', express.static(path.join(__dirname, 'trailers')));
+// app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Disable buffering for streaming responses
 app.disable('x-powered-by');
 
 // Routes
-app.use("/api/videos", require("./routes/videoRoutes"));
+// app.use("/api/videos", require("./routes/videoRoutes"));
 app.use('/api/qoe', require("./routes/qoe"));
 
 // MongoDB connection
