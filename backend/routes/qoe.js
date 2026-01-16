@@ -6,7 +6,7 @@ const QoEEvent = require('../models/QoEEvent');
 // ✅ POST - Start new session
 router.post('/session/start', async (req, res) => {
   try {
-    const { sessionId, userId, videoId, videoTitle, deviceInfo, networkType } = req.body;
+    const { sessionId, userId, videoId, videoTitle, deviceInfo, networkType, cdnEndpoint } = req.body;
 
     const newSession = new QoESession({
       sessionId,
@@ -17,7 +17,7 @@ router.post('/session/start', async (req, res) => {
       osInfo: deviceInfo?.os,
       appVersion: deviceInfo?.appVersion,
       networkType: networkType || 'unknown',
-      cdnEndpoint: cdnEndpoint || 'unknown',
+      cdnEndpoint: cdnEndpoint || {},
       userAgent: req.get('user-agent'),
       status: 'active'
     });

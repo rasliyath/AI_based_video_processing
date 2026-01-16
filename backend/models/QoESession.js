@@ -107,7 +107,7 @@ const qoeSessionSchema = new mongoose.Schema({
     enum: ['2g', '3g', '4g', '5g', 'wifi', 'unknown'],
     default: 'unknown'
   },
-  cdnEndpoint: String,  // CDN used (e.g., YouTube CDN)
+  cdnEndpoint: mongoose.Schema.Types.Mixed,  // CDN info object
   userAgent: String,
 
   // QoE Score (0-100)

@@ -15,7 +15,7 @@ function App() {
   return (
     <>
       {/* Always show header and tabs */}
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom align="center">
           🎬 AI Video Processor
         </Typography>

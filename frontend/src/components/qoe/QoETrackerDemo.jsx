@@ -76,7 +76,7 @@ const QoETrackerDemo = () => {
           appVersion: getBrowserVersion(),
         },
         networkType: getNetworkType(),
-        cdnEndpoint: getCDNEndpoint(),
+        cdnEndpoint: await getCDNEndpoint(),
       };
 
       console.log("🎬 Starting Session:", {
@@ -269,9 +269,62 @@ const QoETrackerDemo = () => {
     return version;
   };
 
-  const getCDNEndpoint = () => {
-    // For YouTube, CDN is abstracted; return generic
-    return "YouTube CDN";
+  const captureYouTubeCDN = async (videoId) => {
+    console.log(" inside captureYouTubeCDN ")
+    try {
+      const cdnInfo = {
+        primary: "googleapis.com/youtubei",
+        fallback: null,
+        detectedHostname: null,
+        detectionMethod: "performance_api",
+        timestamp: new Date().toISOString()
+      };
+
+      // Use Performance API to detect CDN
+      const resources = performance.getEntriesByType('resource');
+
+      resources.forEach(resource => {
+        const name = resource.name.toLowerCase();
+        if (name.includes('googlevideo') || (name.includes('youtube') && name.includes('googleapis'))) {
+          try {
+            const hostname = new URL(resource.name).hostname;
+            cdnInfo.detectedHostname = hostname;
+            cdnInfo.detectionMethod = "performance_api";
+          } catch (e) {}
+        }
+      });
+
+      // If not found, wait a bit and check again
+      if (!cdnInfo.detectedHostname) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const updatedResources = performance.getEntriesByType('resource');
+        updatedResources.forEach(resource => {
+          const name = resource.name.toLowerCase();
+          if (name.includes('googlevideo') || (name.includes('youtube') && name.includes('googleapis'))) {
+            try {
+              const hostname = new URL(resource.name).hostname;
+              cdnInfo.detectedHostname = hostname;
+            } catch (e) {}
+          }
+        });
+      }
+
+      return cdnInfo;
+    } catch (error) {
+      console.error("CDN capture error:", error);
+      return {
+        primary: "googleapis.com/youtubei",
+        fallback: null,
+        detectedHostname: null,
+        detectionMethod: "error",
+        error: error.message
+      };
+    }
+  };
+
+  const getCDNEndpoint = async () => {
+    const cdnInfo = await captureYouTubeCDN(videoIdRef.current);
+      return cdnInfo;
   };
 
   const handleLoadVideo = () => {
