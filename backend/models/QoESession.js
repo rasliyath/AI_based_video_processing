@@ -1,12 +1,13 @@
+// ==================== FIXED QoE SESSION SCHEMA ====================
 const mongoose = require('mongoose');
 
 const qoeSessionSchema = new mongoose.Schema({
-  // Session Identifiers
+  // Session identification
   sessionId: {
     type: String,
-    required: true,
     unique: true,
-    index: true
+    index: true,
+    required: true
   },
   userId: {
     type: String,
@@ -20,30 +21,53 @@ const qoeSessionSchema = new mongoose.Schema({
   },
   videoTitle: String,
 
-  // Timing
+  // Device & Network info
+  deviceType: {
+    type: String,
+    enum: ['mobile', 'tablet', 'desktop'],
+    default: 'desktop'
+  },
+  osInfo: String,
+  appVersion: String,
+  networkType: {
+    type: String,
+    enum: ['wifi', '2g', '3g', '4g', '5g', 'unknown'],
+    default: 'unknown'
+  },
+  userAgent: String,
+
+  // CDN info
+  cdnEndpoint: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+
+  // ==================== TIMING ====================
   startTime: {
     type: Date,
     default: Date.now,
     index: true
   },
   endTime: Date,
+  totalSessionDuration: Number, // in seconds
 
-  // Watch Duration (in seconds)
-  totalSessionDuration: Number,  // Total time from start to end
-  totalWatchDuration: Number,    // Actual time watched (excluding pauses)
-  completedPercentage: Number,   // % of video watched (0-100)
-  lastPlaybackPosition: Number,  // Where user stopped
+  // ==================== PLAYBACK METRICS ====================
+  totalWatchDuration: {
+    type: Number,
+    default: 0
+  },
+  completedPercentage: Number,
+  lastPlaybackPosition: Number,
 
-  // Buffering Metrics
-  bufferingEvents: [
-    {
-      startTime: Number,  // Position in video
-      endTime: Number,
-      duration: Number,   // In seconds
-      quality: String,    // Quality at time of buffering
-      timestamp: Date
-    }
-  ],
+  // ==================== BUFFERING METRICS ====================
+  bufferingEvents: [{
+    startTime: Number,
+    endTime: Number,
+    duration: Number,
+    quality: String,
+    timestamp: Date,
+    videoTime: Number
+  }],
   totalBufferingTime: {
     type: Number,
     default: 0
@@ -52,78 +76,102 @@ const qoeSessionSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  bufferingPercentage: Number,  // (totalBufferingTime / totalSessionDuration) * 100
+  bufferingPercentage: {
+    type: Number,
+    default: 0
+  },
 
-  // Quality Changes
-  qualityChanges: [
-    {
-      timestamp: Date,
-      fromQuality: String,
-      toQuality: String,
-      atVideoTime: Number,  // Position in video where change happened
-      reason: {
-        type: String,
-        enum: ['auto', 'manual', 'buffering'],
-        default: 'auto'
-      }
-    }
-  ],
+  // ==================== QUALITY METRICS ====================
+  qualityChanges: [{
+    timestamp: Date,
+    fromQuality: String,
+    toQuality: String,
+    atVideoTime: Number
+  }],
   totalQualityChanges: {
     type: Number,
     default: 0
   },
-  qualityDistribution: {
-    // e.g., { "hd1080": 120, "hd720": 80, "hd480": 45 }
-    type: Map,
-    of: Number
-  },
-  finalQuality: String,  // Last quality used
+  finalQuality: String,
 
-  // Playback Errors
-  playbackErrors: [
-    {
-      code: String,
-      message: String,
-      timestamp: Date,
-      atVideoTime: Number
-    }
-  ],
+  // ==================== PLAYBACK ERRORS ====================
+  playbackErrors: [{
+    code: String,
+    message: String,
+    timestamp: Date,
+    atVideoTime: Number
+  }],
   totalErrors: {
     type: Number,
     default: 0
   },
-  errorRate: Number,  // (totalErrors / totalSessionDuration) * 100
-
-  // Device & Network Info
-  deviceType: {
-    type: String,
-    enum: ['mobile', 'tablet', 'desktop'],
-    default: 'desktop'
+  errorRate: {
+    type: Number,
+    default: 0
   },
-  osInfo: String,
-  appVersion: String,  // Browser version for web
-  networkType: {
-    type: String,
-    enum: ['2g', '3g', '4g', '5g', 'wifi', 'unknown'],
-    default: 'unknown'
-  },
-  cdnEndpoint: mongoose.Schema.Types.Mixed,  // CDN info object
-  userAgent: String,
 
-  // QoE Score (0-100)
+  // ==================== RECORDED ERRORS (NEW) ====================
+  // These are errors captured by event recording (network, crashes, etc.)
+  recordedErrors: [{
+    type: {
+      type: String,
+      enum: ['network_error', 'loading_error', 'initialization_error', 'playback_error'],
+      required: true
+    },
+    message: String,
+    code: String,
+    videoTime: Number,
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    severity: {
+      type: String,
+      enum: ['low', 'normal', 'critical'],
+      default: 'normal'
+    }
+  }],
+  recordedErrorCount: {
+    type: Number,
+    default: 0
+  },
+
+  // ==================== RECORDED CRASHES (NEW) ====================
+  recordedCrashes: [{
+    type: {
+      type: String,
+      required: true
+    },
+    message: String,
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    severity: {
+      type: String,
+      enum: ['low', 'normal', 'critical'],
+      default: 'critical'
+    }
+  }],
+  recordedCrashCount: {
+    type: Number,
+    default: 0
+  },
+
+  // ==================== QoE SCORE ====================
   qoeScore: {
     type: Number,
+    default: 100,
     min: 0,
-    max: 100,
-    default: 100
+    max: 100
   },
-  // Calculation: 100 - (bufferingPercentage * 0.5) - (errorRate * 1) - (qualityDropPercentage * 0.3)
 
-  // Session Status
+  // ==================== SESSION STATUS ====================
   status: {
     type: String,
-    enum: ['active', 'completed', 'abandoned', 'error'],
-    default: 'active'
+    enum: ['active', 'paused', 'completed', 'abandoned', 'error'],
+    default: 'active',
+    index: true
   },
 
   // Metadata
@@ -136,6 +184,43 @@ const qoeSessionSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
+}, {
+  timestamps: true,
+  collection: 'qoe_sessions'
 });
+
+// ==================== INDEXES ====================
+qoeSessionSchema.index({ videoId: 1, startTime: -1 });
+qoeSessionSchema.index({ userId: 1, startTime: -1 });
+qoeSessionSchema.index({ 'recordedErrors.type': 1 });
+qoeSessionSchema.index({ 'recordedCrashes.type': 1 });
+
+// ==================== VIRTUALS ====================
+qoeSessionSchema.virtual('totalRecordedIssues').get(function() {
+  return (this.recordedErrors?.length || 0) + (this.recordedCrashes?.length || 0);
+});
+
+// ==================== METHODS ====================
+qoeSessionSchema.methods.addRecordedError = function(errorType, message, code, videoTime, severity = 'normal') {
+  this.recordedErrors.push({
+    type: errorType,
+    message,
+    code,
+    videoTime,
+    severity,
+    timestamp: new Date()
+  });
+  this.recordedErrorCount = this.recordedErrors.length;
+};
+
+qoeSessionSchema.methods.addRecordedCrash = function(crashType, message, severity = 'critical') {
+  this.recordedCrashes.push({
+    type: crashType,
+    message,
+    severity,
+    timestamp: new Date()
+  });
+  this.recordedCrashCount = this.recordedCrashes.length;
+};
 
 module.exports = mongoose.model('QoESession', qoeSessionSchema);

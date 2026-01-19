@@ -1,53 +1,143 @@
-// ==================== QoE CMS Dashboard ====================
+// ==================== FIXED QoE DASHBOARD WITH DATE FILTERING ====================
 // components/QoEDashboard.jsx
 
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Users, AlertTriangle, Zap, Download, RefreshCw } from 'lucide-react';
+import { TrendingUp, Users, AlertTriangle, Zap, Download, RefreshCw, Calendar } from 'lucide-react';
 
 const QoEDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [dateRange, setDateRange] = useState({
+    start: '',
+    end: ''
+  });
+  const [appliedDateRange, setAppliedDateRange] = useState({
+    start: '',
+    end: ''
+  });
   const [selectedVideo, setSelectedVideo] = useState('all');
-  const API_BASE_URL =  import.meta.env.VITE_API_BASE || ''
+  const API_BASE_URL = import.meta.env.VITE_API_BASE || '';
 
-  const fetchDashboardData = async () => {
+  // ==================== FETCH ANALYTICS WITH DATE FILTER ====================
+  const fetchDashboardData = async (startDate = '', endDate = '') => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (dateRange.start) params.append('startDate', dateRange.start);
-      if (dateRange.end) params.append('endDate', dateRange.end);
+      setError(null);
 
-      const response = await fetch(`${API_BASE_URL}/api/qoe/analytics?${params}`);
+      // Build query parameters
+      const params = new URLSearchParams();
+
+      // Validate and add dates
+      if (startDate) {
+        const start = new Date(startDate);
+        if (!isNaN(start.getTime())) {
+          params.append('startDate', startDate);
+        } else {
+          console.warn('⚠️ Invalid start date:', startDate);
+        }
+      }
+
+      if (endDate) {
+        const end = new Date(endDate);
+        if (!isNaN(end.getTime())) {
+          params.append('endDate', endDate);
+        } else {
+          console.warn('⚠️ Invalid end date:', endDate);
+        }
+      }
+
+      const queryString = params.toString();
+      const url = queryString
+        ? `${API_BASE_URL}/api/qoe/analytics?${queryString}`
+        : `${API_BASE_URL}/api/qoe/analytics`;
+
+      console.log('📊 Fetching analytics from:', url);
+      console.log('📅 Date Range:', { startDate, endDate });
+
+      const response = await fetch(url);
       const result = await response.json();
 
       if (result.success) {
         setDashboardData(result.data);
+        setAppliedDateRange({ start: startDate, end: endDate });
+        console.log('✅ Analytics fetched:', result.data);
+        console.log('📊 Date range in response:', result.data.dateRange);
       } else {
-        setError('Failed to fetch dashboard data');
+        setError('Failed to fetch dashboard data: ' + result.error);
       }
     } catch (err) {
       setError('Error connecting to API: ' + err.message);
+      console.error('❌ API Error:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch initial data on component mount
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
+  // ==================== HANDLE APPLY FILTERS ====================
+  const handleApplyFilters = () => {
+    if (!dateRange.start && !dateRange.end) {
+      alert('⚠️ Please select at least one date');
+      return;
+    }
+
+    if (dateRange.start && dateRange.end) {
+      const start = new Date(dateRange.start);
+      const end = new Date(dateRange.end);
+      if (start > end) {
+        alert('❌ Start date cannot be after end date');
+        return;
+      }
+    }
+
+    console.log('✅ Applying filters:', dateRange);
+    fetchDashboardData(dateRange.start, dateRange.end);
+  };
+
+  // ==================== HANDLE CLEAR FILTERS ====================
+  const handleClearFilters = () => {
+    setDateRange({ start: '', end: '' });
+    setAppliedDateRange({ start: '', end: '' });
+    fetchDashboardData('', '');
+  };
+
+  // ==================== HANDLE EXPORT ====================
   const handleExport = () => {
-    const dataStr = JSON.stringify(dashboardData, null, 2);
+    const exportData = {
+      ...dashboardData,
+      exportedAt: new Date().toISOString(),
+      appliedFilters: appliedDateRange
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `qoe-report-${new Date().toISOString()}.json`;
+    link.download = `qoe-report-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
+
+    console.log('✅ Report exported');
   };
+
+  // ==================== GET DATE RANGE DISPLAY TEXT ====================
+  const getDateRangeText = () => {
+    if (appliedDateRange.start && appliedDateRange.end) {
+      return `${appliedDateRange.start} to ${appliedDateRange.end}`;
+    } else if (appliedDateRange.start) {
+      return `From ${appliedDateRange.start}`;
+    } else if (appliedDateRange.end) {
+      return `Until ${appliedDateRange.end}`;
+    }
+    return 'All Time';
+  };
+
 
   if (loading) {
     return (
@@ -67,7 +157,7 @@ const QoEDashboard = () => {
 
   if (!dashboardData) return null;
 
-  // Prepare chart data
+  // ==================== PREPARE CHART DATA ====================
   const deviceData = Object.entries(dashboardData.deviceBreakdown || {}).map(([device, count]) => ({
     name: device.charAt(0).toUpperCase() + device.slice(1),
     value: count
@@ -78,13 +168,15 @@ const QoEDashboard = () => {
     value: count
   }));
 
-  const errorData = [
-    ...Object.entries(dashboardData.topErrorCodes || {}).map(([code, count]) => ({
-      name: `Error ${code}`,
-      value: count
-    })),
-    ...(dashboardData.totalCrashes > 0 ? [{ name: 'Crashes', value: dashboardData.totalCrashes }] : [])
-  ];
+  const errorData = Object.entries(dashboardData.topErrorTypes || {}).map(([type, count]) => ({
+    name: type.replace(/_/g, ' ').charAt(0).toUpperCase() + type.replace(/_/g, ' ').slice(1),
+    value: count
+  }));
+
+  const errorCodeData = Object.entries(dashboardData.topErrorCodes || {}).map(([code, count]) => ({
+    name: `Error ${code}`,
+    value: count
+  }));
 
   const timelineData = [
     { time: '00:00', events: Math.floor(dashboardData.totalEvents * 0.05) },
@@ -94,7 +186,7 @@ const QoEDashboard = () => {
     { time: '23:59', events: Math.floor(dashboardData.totalEvents * 0.23) }
   ];
 
-  const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
+  const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
@@ -104,10 +196,14 @@ const QoEDashboard = () => {
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">QoE Analytics Dashboard</h1>
             <p className="text-slate-400">Video platform quality monitoring</p>
+            <p className="text-sm text-slate-500 mt-1">
+              <Calendar className="inline mr-1" size={14} />
+              Period: <strong>{getDateRangeText()}</strong>
+            </p>
           </div>
           <div className="flex gap-4">
             <button
-              onClick={fetchDashboardData}
+              onClick={() => fetchDashboardData(appliedDateRange.start, appliedDateRange.end)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
             >
               <RefreshCw size={18} />
@@ -123,33 +219,69 @@ const QoEDashboard = () => {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-slate-700 p-4 rounded-lg mb-8 flex gap-4">
-          <div className="flex-1">
-            <label className="block text-sm text-slate-300 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
-            />
+        {/* Date Range Filters */}
+        {/* <div className="bg-slate-700 p-6 rounded-lg mb-8">
+          <h2 className="text-lg font-bold text-white mb-4">📅 Filter by Date Range</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">Start Date</label>
+              <input
+                type="date"
+                value={dateRange.start}
+                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
+              />
+              {dateRange.start && (
+                <p className="text-xs text-slate-400 mt-1">{new Date(dateRange.start).toLocaleDateString()}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-300 mb-2">End Date</label>
+              <input
+                type="date"
+                value={dateRange.end}
+                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
+              />
+              {dateRange.end && (
+                <p className="text-xs text-slate-400 mt-1">{new Date(dateRange.end).toLocaleDateString()}</p>
+              )}
+            </div>
+
+            <div className="flex gap-2 items-end">
+              <button
+                onClick={handleApplyFilters}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded font-semibold"
+              >
+                ✅ Apply
+              </button>
+            </div>
+
+            <div className="flex gap-2 items-end">
+              <button
+                onClick={handleClearFilters}
+                className="flex-1 bg-slate-600 hover:bg-slate-500 text-white px-6 py-2 rounded font-semibold"
+              >
+                🔄 Clear
+              </button>
+            </div>
           </div>
-          <div className="flex-1">
-            <label className="block text-sm text-slate-300 mb-1">End Date</label>
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
-            />
-          </div>
-          <button
-            onClick={fetchDashboardData}
-            className="self-end bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded"
-          >
-            Apply
-          </button>
-        </div>
+
+          {appliedDateRange.start || appliedDateRange.end ? (
+            <div className="mt-4 p-3 bg-blue-900 border border-blue-500 rounded">
+              <p className="text-sm text-blue-200">
+                ✅ Filters applied: <strong>{getDateRangeText()}</strong> | Sessions found: <strong>{dashboardData.totalEvents || 0}</strong>
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 p-3 bg-slate-600 border border-slate-500 rounded">
+              <p className="text-sm text-slate-300">
+                📊 Showing all-time data - Select dates to filter
+              </p>
+            </div>
+          )}
+        </div> */}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -157,7 +289,7 @@ const QoEDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-slate-400 text-sm">Total Events</p>
-                <p className="text-3xl font-bold text-white">{dashboardData.totalEvents.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{dashboardData.totalEvents?.toLocaleString()}</p>
               </div>
               <Zap className="text-blue-400" size={40} />
             </div>
@@ -168,7 +300,7 @@ const QoEDashboard = () => {
               <div>
                 <p className="text-slate-400 text-sm">Buffering Events</p>
                 <p className="text-3xl font-bold text-white">{dashboardData.totalBufferingEvents}</p>
-                <p className="text-xs text-slate-400 mt-1">{dashboardData.bufferingPercentage}% of total</p>
+                <p className="text-xs text-slate-400 mt-1">{dashboardData.bufferingPercentage}%</p>
               </div>
               <AlertTriangle className="text-red-400" size={40} />
             </div>
@@ -179,7 +311,7 @@ const QoEDashboard = () => {
               <div>
                 <p className="text-slate-400 text-sm">Playback Errors</p>
                 <p className="text-3xl font-bold text-white">{dashboardData.totalErrors}</p>
-                <p className="text-xs text-slate-400 mt-1">{dashboardData.errorPercentage}% of total</p>
+                <p className="text-xs text-slate-400 mt-1">Recorded: {dashboardData.recordedErrors}</p>
               </div>
               <AlertTriangle className="text-orange-400" size={40} />
             </div>
@@ -201,7 +333,7 @@ const QoEDashboard = () => {
               <div>
                 <p className="text-slate-400 text-sm">Avg Watch Duration</p>
                 <p className="text-3xl font-bold text-white">{Math.floor(dashboardData.avgWatchDuration / 60)}:{(dashboardData.avgWatchDuration % 60).toFixed(0).padStart(2, '0')}</p>
-                <p className="text-xs text-slate-400 mt-1">{dashboardData.avgWatchDuration}s average</p>
+                <p className="text-xs text-slate-400 mt-1">{dashboardData.avgWatchDuration}s</p>
               </div>
               <TrendingUp className="text-purple-400" size={40} />
             </div>
@@ -221,12 +353,12 @@ const QoEDashboard = () => {
                       <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-slate-400">No data available</p>
+              <p className="text-slate-400">No data available for this period</p>
             )}
           </div>
 
@@ -239,28 +371,46 @@ const QoEDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
                   <Bar dataKey="value" fill="#3b82f6" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-slate-400">No data available</p>
+              <p className="text-slate-400">No data available for this period</p>
             )}
           </div>
 
-          {/* Event Timeline */}
-          <div className="bg-slate-700 p-6 rounded-lg">
-            <h2 className="text-xl font-bold text-white mb-4">Events by Time of Day</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={timelineData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="time" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
-                <Line type="monotone" dataKey="events" stroke="#3b82f6" dot={{ fill: '#3b82f6' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {/* Error Types */}
+          {errorData.length > 0 && (
+            <div className="bg-slate-700 p-6 rounded-lg">
+              <h2 className="text-xl font-bold text-white mb-4">Error Types Distribution</h2>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={errorData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                  <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={80} />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Bar dataKey="value" fill="#ef4444" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Error Codes */}
+          {errorCodeData.length > 0 && (
+            <div className="bg-slate-700 p-6 rounded-lg">
+              <h2 className="text-xl font-bold text-white mb-4">Error Codes Distribution</h2>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={errorCodeData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                  <XAxis dataKey="name" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Bar dataKey="value" fill="#f59e0b" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Quality Changes */}
           <div className="bg-slate-700 p-6 rounded-lg">
@@ -272,28 +422,12 @@ const QoEDashboard = () => {
               </div>
               <div className="bg-slate-600 p-3 rounded mt-4">
                 <p className="text-slate-300 text-sm">
-                  Quality adaptations help users with varying network conditions watch videos seamlessly. Higher numbers indicate more dynamic adjustments.
+                  Quality adaptations help users with varying network conditions watch videos seamlessly.
                 </p>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Error Analysis */}
-        {errorData.length > 0 && (
-          <div className="bg-slate-700 p-6 rounded-lg mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">Error Distribution</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={errorData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="name" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
-                <Bar dataKey="value" fill="#ef4444" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
 
         {/* Insights */}
         <div className="bg-slate-700 p-6 rounded-lg">
@@ -302,25 +436,25 @@ const QoEDashboard = () => {
             <div className="bg-slate-600 p-4 rounded">
               <p className="text-blue-300 font-semibold mb-2">✓ Buffering Analysis</p>
               <p className="text-slate-300 text-sm">
-                {dashboardData.bufferingPercentage}% of events are buffering. Consider optimizing CDN and encoding.
+                {dashboardData.bufferingPercentage}% of events are buffering. {dashboardData.bufferingPercentage > 5 ? '⚠️ Consider optimizing CDN' : '✅ Good performance'}
               </p>
             </div>
             <div className="bg-slate-600 p-4 rounded">
               <p className="text-orange-300 font-semibold mb-2">⚠ Error Rate</p>
               <p className="text-slate-300 text-sm">
-                {dashboardData.errorPercentage}% error rate detected. Review error logs for patterns.
+                {dashboardData.errorPercentage}% error rate with {dashboardData.recordedErrors} recorded errors and {dashboardData.recordedCrashes} crashes.
               </p>
             </div>
             <div className="bg-slate-600 p-4 rounded">
               <p className="text-green-300 font-semibold mb-2">✓ User Engagement</p>
               <p className="text-slate-300 text-sm">
-                {dashboardData.userCount} unique users across {dashboardData.videoCount} videos.
+                {dashboardData.userCount} unique users across {dashboardData.videoCount} videos with {dashboardData.avgWatchDuration}s average watch time.
               </p>
             </div>
             <div className="bg-slate-600 p-4 rounded">
               <p className="text-indigo-300 font-semibold mb-2">ℹ Recommendation</p>
               <p className="text-slate-300 text-sm">
-                Focus on reducing buffering events to improve overall QoE score.
+                Focus on reducing {dashboardData.recordedErrors > 0 ? 'recorded errors' : 'buffering events'} to improve overall QoE score.
               </p>
             </div>
           </div>

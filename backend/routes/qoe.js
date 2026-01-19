@@ -49,7 +49,7 @@ router.post('/session/:sessionId/event', async (req, res) => {
 
     // Only store critical events
     const criticalEvents = ['buffering_start', 'buffering_end', 'quality_change', 'error', 'crash'];
-    
+
     if (!criticalEvents.includes(eventType)) {
       return res.status(400).json({
         success: false,
@@ -99,7 +99,7 @@ router.post('/session/:sessionId/end', async (req, res) => {
 
     // Fetch session
     const session = await QoESession.findOne({ sessionId });
-    
+
     if (!session) {
       return res.status(404).json({
         success: false,
@@ -110,10 +110,10 @@ router.post('/session/:sessionId/end', async (req, res) => {
     // Calculate metrics
     const endTime = new Date();
     const totalSessionDuration = Math.round((endTime - session.startTime) / 1000); // in seconds
-    
+
     const totalBufferingTime = bufferingEvents.reduce((sum, e) => sum + (e.duration || 0), 0);
     const totalBufferingCount = bufferingEvents.length;
-    const bufferingPercentage = totalSessionDuration > 0 
+    const bufferingPercentage = totalSessionDuration > 0
       ? parseFloat(((totalBufferingTime / totalSessionDuration) * 100).toFixed(2))
       : 0;
 
@@ -198,20 +198,285 @@ router.get('/session/:sessionId', async (req, res) => {
   }
 });
 
-// ✅ GET - Get video analytics
+// ✅ GET - Get overall analytics WITH DATE RANGE FILTERING
+router.get('/analytics', async (req, res) => {
+  try {
+    // Extract date parameters from query string
+    const { startDate, endDate } = req.query;
+
+    console.log('📊 Fetching analytics with filters:', {
+      startDate,
+      endDate,
+      receivedStartDate: startDate ? new Date(startDate) : null,
+      receivedEndDate: endDate ? new Date(endDate) : null,
+    });
+
+    // Build date filter
+    let dateFilter = {};
+
+    if (startDate && endDate) {
+      // Convert string dates to Date objects
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Validate dates
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.warn('⚠️ Invalid date format provided');
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.',
+          example: 'startDate=2025-01-19&endDate=2025-12-31'
+        });
+      }
+
+      // Normalize dates to avoid timezone issues
+
+      start.setHours(0, 0, 0, 0);        // Set to START of day (00:00:00)
+
+      // Set end date to END of day (23:59:59)
+      end.setHours(23, 59, 59, 999);
+
+      dateFilter = {
+        startTime: {
+          $gte: start,
+          $lte: end
+        }
+      };
+
+      console.log('📅 Date Filter Applied:', {
+        from: start.toISOString(),
+        to: end.toISOString(),
+      });
+    } else if (startDate) {
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid startDate format. Use YYYY-MM-DD format.'
+        });
+      }
+      start.setHours(0, 0, 0, 0);  // Set to START of day
+      dateFilter = {
+        startTime: { $gte: start }
+      };
+    } else if (endDate) {
+      const end = new Date(endDate);
+      if (isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid endDate format. Use YYYY-MM-DD format.'
+        });
+      }
+      end.setHours(23, 59, 59, 999);
+      dateFilter = {
+        startTime: { $lte: end }
+      };
+    }
+
+    // Combine status filter with date filter
+    const query = {
+      status: { $in: ['completed', 'abandoned'] },
+      ...dateFilter
+    };
+
+    console.log('🔍 Query:', JSON.stringify(query, null, 2));
+
+    // Fetch sessions
+    const sessions = await QoESession.find(query);
+
+    console.log(`✅ Found ${sessions.length} sessions matching criteria`);
+
+    if (sessions.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          totalEvents: 0,
+          totalBufferingEvents: 0,
+          bufferingPercentage: 0,
+          totalErrors: 0,
+          recordedErrors: 0,
+          recordedCrashes: 0,
+          errorPercentage: 0,
+          userCount: 0,
+          videoCount: 0,
+          totalQualityChanges: 0,
+          avgWatchDuration: 0,
+          deviceBreakdown: {},
+          networkTypeBreakdown: {},
+          topErrorCodes: {},
+          topErrorTypes: {},
+          dateRange: {
+            from: startDate || 'All time',
+            to: endDate || 'Today',
+            sessionsFound: 0
+          }
+        }
+      });
+    }
+
+    // ==================== AGGREGATE METRICS ====================
+
+    // Count events
+    const totalEvents = sessions.length;
+    const totalBufferingEvents = sessions.reduce((sum, s) => sum + (s.totalBufferingCount || 0), 0);
+    const totalBufferingTime = sessions.reduce((sum, s) => sum + (s.totalBufferingTime || 0), 0);
+
+    // Count errors - FIXED: Include recorded errors
+    const totalRecordedErrors = sessions.reduce((sum, s) => sum + (s.recordedErrors?.length || 0), 0);
+    const totalRecordedCrashes = sessions.reduce((sum, s) => sum + (s.recordedCrashes?.length || 0), 0);
+    const totalErrors = sessions.reduce((sum, s) => sum + (s.totalErrors || 0), 0);
+    const totalQualityChanges = sessions.reduce((sum, s) => sum + (s.totalQualityChanges || 0), 0);
+    const totalWatchDuration = sessions.reduce((sum, s) => sum + (s.totalWatchDuration || 0), 0);
+
+    // Calculate percentages
+    const totalSessionDuration = sessions.reduce((sum, s) => sum + (s.totalSessionDuration || 0), 0);
+    const bufferingPercentage = totalSessionDuration > 0
+      ? parseFloat(((totalBufferingTime / totalSessionDuration) * 100).toFixed(2))
+      : 0;
+    const errorPercentage = totalSessionDuration > 0
+      ? parseFloat(((totalErrors / totalSessionDuration) * 100).toFixed(2))
+      : 0;
+
+    // Calculate averages
+    const avgWatchDuration = totalEvents > 0
+      ? parseFloat((totalWatchDuration / totalEvents).toFixed(2))
+      : 0;
+
+    // ==================== BREAKDOWNS ====================
+
+    // Unique users and videos
+    const uniqueUsers = new Set(sessions.map(s => s.userId));
+    const uniqueVideos = new Set(sessions.map(s => s.videoId));
+
+    // Device breakdown
+    const deviceBreakdown = {};
+    sessions.forEach(s => {
+      const device = s.deviceType || 'unknown';
+      deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1;
+    });
+
+    // Network breakdown
+    const networkBreakdown = {};
+    sessions.forEach(s => {
+      const network = s.networkType || 'unknown';
+      networkBreakdown[network] = (networkBreakdown[network] || 0) + 1;
+    });
+
+    // Error code breakdown
+    const errorCodeBreakdown = {};
+    sessions.forEach(s => {
+      if (s.playbackErrors) {
+        s.playbackErrors.forEach(e => {
+          const code = e.code || 'unknown';
+          errorCodeBreakdown[code] = (errorCodeBreakdown[code] || 0) + 1;
+        });
+      }
+    });
+
+    // Error type breakdown (from recorded errors)
+    const errorTypeBreakdown = {};
+    sessions.forEach(s => {
+      if (s.recordedErrors) {
+        s.recordedErrors.forEach(e => {
+          const type = e.type || 'unknown';
+          errorTypeBreakdown[type] = (errorTypeBreakdown[type] || 0) + 1;
+        });
+      }
+      if (s.recordedCrashes) {
+        s.recordedCrashes.forEach(c => {
+          const type = c.type || 'crash';
+          errorTypeBreakdown[type] = (errorTypeBreakdown[type] || 0) + 1;
+        });
+      }
+    });
+
+    // ==================== BUILD RESPONSE ====================
+
+    const analytics = {
+      totalEvents,
+      totalBufferingEvents,
+      bufferingPercentage,
+      totalErrors,
+      recordedErrors: totalRecordedErrors,      // ← NEW
+      recordedCrashes: totalRecordedCrashes,    // ← NEW
+      errorPercentage,
+      userCount: uniqueUsers.size,
+      videoCount: uniqueVideos.size,
+      totalQualityChanges,
+      avgWatchDuration,
+      deviceBreakdown,
+      networkTypeBreakdown: networkBreakdown,
+      topErrorCodes: errorCodeBreakdown,
+      topErrorTypes: errorTypeBreakdown,        // ← NEW
+    };
+
+    // Always include dateRange in response
+    analytics.dateRange = {
+      from: startDate || 'All time',
+      to: endDate || 'Today',
+      sessionsFound: totalEvents
+    };
+
+    console.log(`✅ Analytics generated:`, analytics);
+    console.log(`📅 Date range in response:`, analytics.dateRange);
+
+    res.json({
+      success: true,
+      data: analytics
+    });
+
+  } catch (error) {
+    console.error('❌ Error generating analytics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ✅ GET - Get video analytics WITH DATE FILTERING
 router.get('/video/:videoId/analytics', async (req, res) => {
   try {
     const { videoId } = req.params;
+    const { startDate, endDate } = req.query;
 
-    const sessions = await QoESession.find({ 
+    // Build date filter
+    let dateFilter = {};
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.'
+        });
+      }
+
+      end.setHours(23, 59, 59, 999);
+
+      dateFilter = {
+        startTime: {
+          $gte: start,
+          $lte: end
+        }
+      };
+    }
+
+    // Fetch sessions with filter
+    const sessions = await QoESession.find({
       videoId,
-      status: { $in: ['completed', 'abandoned'] }
+      status: { $in: ['completed', 'abandoned'] },
+      ...dateFilter
     });
 
     if (sessions.length === 0) {
       return res.json({
         success: true,
-        data: { message: 'No sessions found' }
+        data: {
+          message: 'No sessions found for this video in the selected date range'
+        }
       });
     }
 
@@ -254,113 +519,15 @@ router.get('/video/:videoId/analytics', async (req, res) => {
       avgQoEScore,
       deviceBreakdown,
       networkBreakdown,
-      errorBreakdown
-    };
-
-    console.log(`✅ Analytics generated for video ${videoId}:`, analytics);
-
-    res.json({
-      success: true,
-      data: analytics
-    });
-
-  } catch (error) {
-    console.error('❌ Error generating analytics:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ✅ GET - Get overall analytics
-router.get('/analytics', async (req, res) => {
-  try {
-    const sessions = await QoESession.find({
-      status: { $in: ['completed', 'abandoned'] }
-    });
-
-    if (sessions.length === 0) {
-      return res.json({
-        success: true,
-        data: {
-          totalEvents: 0,
-          totalBufferingEvents: 0,
-          bufferingPercentage: 0,
-          totalErrors: 0,
-          errorPercentage: 0,
-          userCount: 0,
-          videoCount: 0,
-          totalQualityChanges: 0,
-          deviceBreakdown: {},
-          networkTypeBreakdown: {},
-          topErrorCodes: {}
-        }
-      });
-    }
-
-    // Calculate totals
-    const totalEvents = sessions.length;
-    const totalBufferingEvents = sessions.reduce((sum, s) => sum + (s.totalBufferingCount || 0), 0);
-    const totalBufferingTime = sessions.reduce((sum, s) => sum + (s.totalBufferingTime || 0), 0);
-    const totalErrors = sessions.reduce((sum, s) => sum + (s.totalErrors || 0), 0);
-    const totalQualityChanges = sessions.reduce((sum, s) => sum + (s.totalQualityChanges || 0), 0);
-    const totalWatchDuration = sessions.reduce((sum, s) => sum + (s.totalWatchDuration || 0), 0);
-
-    // Calculate percentages
-    const totalSessionDuration = sessions.reduce((sum, s) => sum + (s.totalSessionDuration || 0), 0);
-    const bufferingPercentage = totalSessionDuration > 0 ? ((totalBufferingTime / totalSessionDuration) * 100).toFixed(2) : 0;
-    const errorPercentage = totalSessionDuration > 0 ? ((totalErrors / totalSessionDuration) * 100).toFixed(2) : 0;
-
-    // Calculate averages
-    const avgWatchDuration = totalEvents > 0 ? (totalWatchDuration / totalEvents).toFixed(2) : 0;
-
-    // Unique users and videos
-    const uniqueUsers = new Set(sessions.map(s => s.userId));
-    const uniqueVideos = new Set(sessions.map(s => s.videoId));
-
-    // Device breakdown
-    const deviceBreakdown = {};
-    sessions.forEach(s => {
-      deviceBreakdown[s.deviceType] = (deviceBreakdown[s.deviceType] || 0) + 1;
-    });
-
-    // Network breakdown
-    const networkBreakdown = {};
-    sessions.forEach(s => {
-      networkBreakdown[s.networkType] = (networkBreakdown[s.networkType] || 0) + 1;
-    });
-
-    // Error breakdown
-    const errorBreakdown = {};
-    sessions.forEach(s => {
-      if (s.playbackErrors) {
-        s.playbackErrors.forEach(e => {
-          errorBreakdown[e.code] = (errorBreakdown[e.code] || 0) + 1;
-        });
+      errorBreakdown,
+      dateRange: {
+        from: startDate || 'All time',
+        to: endDate || 'Today',
+        sessionsFound: totalSessions
       }
-    });
-
-    // Crash count
-    const totalCrashes = await QoEEvent.countDocuments({ eventType: 'crash' });
-
-    const analytics = {
-      totalEvents,
-      totalBufferingEvents,
-      bufferingPercentage: parseFloat(bufferingPercentage),
-      totalErrors,
-      errorPercentage: parseFloat(errorPercentage),
-      userCount: uniqueUsers.size,
-      videoCount: uniqueVideos.size,
-      totalQualityChanges,
-      avgWatchDuration: parseFloat(avgWatchDuration),
-      totalCrashes,
-      deviceBreakdown,
-      networkTypeBreakdown: networkBreakdown,
-      topErrorCodes: errorBreakdown
     };
 
-    console.log(`✅ Overall analytics generated:`, analytics);
+    console.log(`✅ Video analytics for ${videoId}:`, analytics);
 
     res.json({
       success: true,
@@ -368,7 +535,7 @@ router.get('/analytics', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error generating overall analytics:', error);
+    console.error('❌ Error generating video analytics:', error);
     res.status(500).json({
       success: false,
       error: error.message

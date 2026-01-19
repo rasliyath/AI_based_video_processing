@@ -1,4 +1,4 @@
-// components/qoe/QoETrackerDemo.jsx - FIXED SESSION MANAGEMENT
+// components/qoe/QoETrackerDemo.jsx - FULLY UPDATED WITH ERROR TRACKING
 import React, { useEffect, useRef, useState } from "react";
 import {
   BarChart,
@@ -32,6 +32,24 @@ const QoETrackerDemo = () => {
   });
   const [syncStatus, setSyncStatus] = useState("idle");
   const [dbEvents, setDbEvents] = useState(0);
+  const [networkErrors, setNetworkErrors] = useState([]);
+  const [offlineQueuedEvents, setOfflineQueuedEvents] = useState(0);
+
+  // Sample users for selection
+  const users = [
+    { id: 'user_1', name: 'User 1' },
+    { id: 'user_2', name: 'User 2' },
+    { id: 'user_3', name: 'User 3' },
+    { id: 'user_4', name: 'User 4' },
+    { id: 'user_5', name: 'User 5' },
+    { id: 'user_6', name: 'User 6' },
+    { id: 'user_7', name: 'User 7' },
+    { id: 'user_8', name: 'User 8' },
+    { id: 'user_9', name: 'User 9' },
+    { id: 'user_10', name: 'User 10' },
+  ];
+
+  const [selectedUserId, setSelectedUserId] = useState('user_1');
 
   // Tracking refs
   const eventCountRef = useRef({});
@@ -42,16 +60,152 @@ const QoETrackerDemo = () => {
   const timerRef = useRef(null);
   const sessionStartTimeRef = useRef(null);
   const lastQualityRef = useRef(null);
-  const isStartingSessionRef = useRef(false); // ← CRITICAL: Prevent duplicate sessions
+  const isStartingSessionRef = useRef(false);
   const sessionIdRef = useRef(null);
-  const videoIdRef = useRef("dQw4w9WgXcQ"); // ← Ref for current videoId
-  const totalWatchTimeRef = useRef(0); // ← Ref for total watch time
+  const videoIdRef = useRef("dQw4w9WgXcQ");
+  const totalWatchTimeRef = useRef(0);
 
   const apiUrl = `${import.meta.env.VITE_API_BASE}/api/qoe`;
 
+  // ============= OFFLINE EVENT QUEUE MANAGEMENT =============
+  const storeEventOffline = async (sessionId, payload) => {
+    try {
+      const offlineEvents = JSON.parse(
+        localStorage.getItem(`offline_events_${sessionId}`) || "[]"
+      );
+      offlineEvents.push({
+        ...payload,
+        queuedAt: new Date().toISOString(),
+        status: "pending",
+      });
+      localStorage.setItem(
+        `offline_events_${sessionId}`,
+        JSON.stringify(offlineEvents)
+      );
+      console.log(`📦 Event queued offline: ${payload.eventType}`);
+      setOfflineQueuedEvents((prev) => prev + 1);
+    } catch (err) {
+      console.error("❌ Failed to queue offline:", err);
+    }
+  };
+
+  const syncOfflineEvents = async (sessionId) => {
+    try {
+      const offlineEvents = JSON.parse(
+        localStorage.getItem(`offline_events_${sessionId}`) || "[]"
+      );
+
+      if (offlineEvents.length === 0) {
+        console.log("✅ No offline events to sync");
+        return;
+      }
+
+      console.log(`🔄 Syncing ${offlineEvents.length} offline events...`);
+
+      let successCount = 0;
+      const failedEvents = [];
+
+      for (const event of offlineEvents) {
+        try {
+          const response = await fetch(
+            `${apiUrl}/session/${sessionId}/event`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(event),
+            }
+          );
+
+          if (response.ok) {
+            successCount++;
+            setDbEvents((prev) => prev + 1);
+          } else {
+            failedEvents.push(event);
+          }
+        } catch (err) {
+          console.error("❌ Failed to sync event:", err);
+          failedEvents.push(event);
+        }
+      }
+
+      // Clear successfully synced events
+      if (failedEvents.length === 0) {
+        localStorage.removeItem(`offline_events_${sessionId}`);
+        setOfflineQueuedEvents(0);
+      } else {
+        localStorage.setItem(
+          `offline_events_${sessionId}`,
+          JSON.stringify(failedEvents)
+        );
+        setOfflineQueuedEvents(failedEvents.length);
+      }
+
+      console.log(`✅ Synced ${successCount}/${offlineEvents.length} events`);
+
+      addUIEvent({
+        type: "syncComplete",
+        label: `✅ SYNCED ${successCount} OFFLINE EVENTS`,
+        color: "#10b981",
+      });
+    } catch (error) {
+      console.error("❌ Sync error:", error);
+    }
+  };
+
+  // ============= RECORD CRITICAL EVENTS WITH OFFLINE SUPPORT =============
+  const recordCriticalEvent = async (eventType, eventData) => {
+    if (!sessionIdRef.current) {
+      console.warn("⚠️ No active session - event not recorded");
+      return;
+    }
+
+    try {
+      const payload = {
+        userId: selectedUserId,
+        videoId: videoIdRef.current,
+        eventType: eventType,
+        eventData: {
+          ...eventData,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+        },
+      };
+
+      console.log(`📤 Recording ${eventType}:`, eventData);
+
+      // ATTEMPT 1: Try immediate send
+      try {
+        const response = await fetch(
+          `${apiUrl}/session/${sessionIdRef.current}/event`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (response.ok) {
+          setDbEvents((prev) => prev + 1);
+          console.log(`✅ Event sent: ${eventType}`);
+          return; // Success
+        }
+      } catch (fetchError) {
+        console.warn(
+          `⚠️ Initial send failed for ${eventType}:`,
+          fetchError.message
+        );
+      }
+
+      // ATTEMPT 2: Store in offline queue if network is down
+      console.log("🔄 Network may be down, queuing event for later...");
+      await storeEventOffline(sessionIdRef.current, payload);
+    } catch (error) {
+      console.error(`❌ Failed to record ${eventType}:`, error);
+    }
+  };
+
   // ============= SESSION MANAGEMENT =============
   const startSession = async () => {
-    // PREVENT DUPLICATE SESSION CREATION
     if (sessionIdRef.current || isStartingSessionRef.current) {
       console.warn("⚠️ Session already exists or starting");
       return;
@@ -67,7 +221,7 @@ const QoETrackerDemo = () => {
 
       const payload = {
         sessionId: newSessionId,
-        userId: "test_user_1235",
+        userId: selectedUserId,
         videoId: videoIdRef.current,
         videoTitle: "YouTube Video",
         deviceInfo: {
@@ -91,8 +245,8 @@ const QoETrackerDemo = () => {
       });
 
       if (response.ok) {
-        sessionIdRef.current = newSessionId; // ✅ SET REF FIRST
-        setSessionId(newSessionId); // UI only
+        sessionIdRef.current = newSessionId;
+        setSessionId(newSessionId);
         sessionStartTimeRef.current = Date.now();
 
         bufferingEventsRef.current = [];
@@ -103,6 +257,9 @@ const QoETrackerDemo = () => {
         console.log("✅ Session started:", newSessionId);
         setSyncStatus("success");
         setTimeout(() => setSyncStatus("idle"), 2000);
+
+        // Sync any pending offline events
+        syncOfflineEvents(newSessionId);
       } else {
         console.error("❌ Failed to start session:", response.status);
         setSessionId(null);
@@ -119,35 +276,8 @@ const QoETrackerDemo = () => {
     }
   };
 
-  // ============= RECORD CRITICAL EVENTS ONLY =============
-  const recordCriticalEvent = async (eventType, eventData) => {
-    if (!sessionIdRef.current) return;
-
-    try {
-      const payload = {
-        userId: "test_user_1235",
-        videoId: videoIdRef.current,
-        eventType: eventType,
-        eventData: eventData,
-      };
-
-      console.log(`📤 Recording ${eventType}:`, eventData);
-
-      await fetch(`${apiUrl}/session/${sessionIdRef.current}/event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      setDbEvents((prev) => prev + 1);
-    } catch (error) {
-      console.error(`❌ Failed to record ${eventType}:`, error);
-    }
-  };
-
   // ============= END SESSION AND CALCULATE METRICS =============
   const endSession = async (sessionIdToEnd) => {
-    // MUST have sessionId and start time
     if (!sessionIdToEnd || !sessionStartTimeRef.current) {
       console.warn("⚠️ Cannot end session: missing sessionId or startTime");
       return;
@@ -180,15 +310,20 @@ const QoETrackerDemo = () => {
         ...payload,
       });
 
-      const response = await fetch(`${apiUrl}/session/${sessionIdToEnd}/end`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        `${apiUrl}/session/${sessionIdToEnd}/end`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
         console.log("✅ Session ended with QoE Score:", data.data.qoeScore);
+        console.log("📊 Recorded Errors:", data.data.recordedErrorCount);
+        console.log("🚨 Recorded Crashes:", data.data.recordedCrashCount);
         setSyncStatus("success");
         setTimeout(() => setSyncStatus("idle"), 2000);
 
@@ -226,7 +361,7 @@ const QoETrackerDemo = () => {
       }
       return id;
     } catch (error) {
-      console.error("Invalid URL:", error);
+      console.error("❌ Invalid URL:", error);
       return null;
     }
   };
@@ -270,22 +405,24 @@ const QoETrackerDemo = () => {
   };
 
   const captureYouTubeCDN = async (videoId) => {
-    console.log(" inside captureYouTubeCDN ")
+    console.log("📡 Capturing YouTube CDN info...");
     try {
       const cdnInfo = {
         primary: "googleapis.com/youtubei",
         fallback: null,
         detectedHostname: null,
         detectionMethod: "performance_api",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
-      // Use Performance API to detect CDN
-      const resources = performance.getEntriesByType('resource');
+      const resources = performance.getEntriesByType("resource");
 
-      resources.forEach(resource => {
+      resources.forEach((resource) => {
         const name = resource.name.toLowerCase();
-        if (name.includes('googlevideo') || (name.includes('youtube') && name.includes('googleapis'))) {
+        if (
+          name.includes("googlevideo") ||
+          (name.includes("youtube") && name.includes("googleapis"))
+        ) {
           try {
             const hostname = new URL(resource.name).hostname;
             cdnInfo.detectedHostname = hostname;
@@ -294,13 +431,15 @@ const QoETrackerDemo = () => {
         }
       });
 
-      // If not found, wait a bit and check again
       if (!cdnInfo.detectedHostname) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const updatedResources = performance.getEntriesByType('resource');
-        updatedResources.forEach(resource => {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const updatedResources = performance.getEntriesByType("resource");
+        updatedResources.forEach((resource) => {
           const name = resource.name.toLowerCase();
-          if (name.includes('googlevideo') || (name.includes('youtube') && name.includes('googleapis'))) {
+          if (
+            name.includes("googlevideo") ||
+            (name.includes("youtube") && name.includes("googleapis"))
+          ) {
             try {
               const hostname = new URL(resource.name).hostname;
               cdnInfo.detectedHostname = hostname;
@@ -311,26 +450,26 @@ const QoETrackerDemo = () => {
 
       return cdnInfo;
     } catch (error) {
-      console.error("CDN capture error:", error);
+      console.error("❌ CDN capture error:", error);
       return {
         primary: "googleapis.com/youtubei",
         fallback: null,
         detectedHostname: null,
         detectionMethod: "error",
-        error: error.message
+        error: error.message,
       };
     }
   };
 
   const getCDNEndpoint = async () => {
     const cdnInfo = await captureYouTubeCDN(videoIdRef.current);
-      return cdnInfo;
+    return cdnInfo;
   };
 
   const handleLoadVideo = () => {
     const extractedId = extractVideoId(videoUrl);
     if (extractedId) {
-      videoIdRef.current = extractedId; // Update ref immediately
+      videoIdRef.current = extractedId;
       setVideoId(extractedId);
       setSessionId(null);
       setEvents([]);
@@ -345,19 +484,18 @@ const QoETrackerDemo = () => {
       });
       eventCountRef.current = {};
       setDbEvents(0);
-      sessionIdRef.current = null; // 🔥 REQUIRED
+      setOfflineQueuedEvents(0);
+      sessionIdRef.current = null;
       sessionStartTimeRef.current = null;
       setSessionId(null);
       isStartingSessionRef.current = false;
-      totalWatchTimeRef.current = 0; // Reset watch time ref
+      totalWatchTimeRef.current = 0;
 
       console.log("🎬 Loading Video:", { videoId: extractedId, url: videoUrl });
 
-      // Always initialize/reinitialize the player with the new video
       if (window.YT && window.YT.Player) {
         initPlayer(extractedId);
       } else {
-        // Wait for YouTube API to load
         const checkAPI = () => {
           if (window.YT && window.YT.Player) {
             initPlayer(extractedId);
@@ -368,7 +506,7 @@ const QoETrackerDemo = () => {
         checkAPI();
       }
     } else {
-      alert("Invalid YouTube URL or Video ID. Please check and try again.");
+      alert("❌ Invalid YouTube URL or Video ID. Please check and try again.");
     }
   };
 
@@ -383,52 +521,215 @@ const QoETrackerDemo = () => {
       window.onYouTubeIframeAPIReady = () => initPlayer(videoId);
     }
 
-    // Crash tracking
+    // Global crash tracking
     const handleError = (message, source, lineno, colno, error) => {
-      console.error("🚨 App Crash Detected:", { message, source, lineno, colno, error });
+      console.error("🚨 App Crash Detected:", {
+        message,
+        source,
+        lineno,
+        colno,
+        error,
+      });
+
+      let errorType = "javascript_error";
+      if (message && String(message).toLowerCase().includes("invalid video id")) {
+        errorType = "invalid_video_id";
+      } else if (message && String(message).includes("ERR_INTERNET_DISCONNECTED")) {
+        errorType = "network_error";
+      } else if (message && String(message).includes("cross-origin")) {
+        errorType = "cross_origin_error";
+      }
+
+      const videoTime = Math.floor(window.player?.getCurrentTime() || 0);
+
+      errorsRef.current.push({
+        code: errorType,
+        message: String(message),
+        timestamp: new Date().toISOString(),
+        atVideoTime: videoTime,
+        severity: "critical",
+        source,
+        lineno,
+        colno,
+      });
+
       recordCriticalEvent("crash", {
+        type: errorType,
         message: String(message),
         source,
         lineno,
         colno,
         stack: error?.stack,
         userAgent: navigator.userAgent,
+        severity: "critical",
+      });
+
+      setStats((prev) => ({
+        ...prev,
+        errorCount: prev.errorCount + 1,
+      }));
+
+      addUIEvent({
+        type: "crash",
+        label: `🚨 CRASH: ${errorType}`,
+        color: "#991b1b",
       });
     };
 
-    window.addEventListener('error', handleError);
+    // Network status tracking
+    const handleOnline = () => {
+      console.log("🌐 Network restored");
+      recordCriticalEvent("network_recovery", {
+        previousErrors: networkErrors.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (sessionIdRef.current) {
+        syncOfflineEvents(sessionIdRef.current);
+      }
+
+      setNetworkErrors([]);
+
+      addUIEvent({
+        type: "networkRecovery",
+        label: "🌐 NETWORK RESTORED",
+        color: "#10b981",
+      });
+    };
+
+    const handleOffline = () => {
+      console.warn("🌐 Network offline detected");
+      const currentTime = Math.floor(window.player?.getCurrentTime() || 0);
+
+      errorsRef.current.push({
+        code: "NETWORK_OFFLINE",
+        message: "Network connection lost during playback",
+        timestamp: new Date().toISOString(),
+        atVideoTime: currentTime,
+        severity: "critical",
+      });
+
+      recordCriticalEvent("network_error", {
+        type: "offline",
+        videoTime: currentTime,
+        severity: "critical",
+        timestamp: new Date().toISOString(),
+      });
+
+      setNetworkErrors((prev) => [
+        ...prev,
+        {
+          type: "offline",
+          timestamp: new Date().toISOString(),
+          videoTime: currentTime,
+        },
+      ]);
+
+      setStats((prev) => ({
+        ...prev,
+        errorCount: prev.errorCount + 1,
+      }));
+
+      addUIEvent({
+        type: "networkError",
+        label: "🌐 NETWORK OFFLINE",
+        color: "#dc2626",
+      });
+    };
+
+    window.addEventListener("error", handleError);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      window.removeEventListener('error', handleError);
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [networkErrors]);
 
   const initPlayer = (id = videoId) => {
     if (playerRef.current && window.YT) {
-      // Destroy existing player if it exists
-      if (window.player && typeof window.player.destroy === 'function') {
-        window.player.destroy();
-      }
+      try {
+        if (window.player && typeof window.player.destroy === "function") {
+          window.player.destroy();
+        }
 
-      window.player = new window.YT.Player(playerRef.current, {
-        height: "500",
-        width: "100%",
-        videoId: id,
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          modestbranding: 0,
-          rel: 0,
-        },
-        events: {
-          onReady: handlePlayerReady,
-          onStateChange: handleStateChange,
-          onPlaybackQualityChange: handleQualityChange,
-          onError: handleError,
-          onPlaybackRateChange: handleRateChange,
-        },
-      });
+        window.player = new window.YT.Player(playerRef.current, {
+          height: "500",
+          width: "100%",
+          videoId: id,
+          playerVars: {
+            autoplay: 0,
+            controls: 1,
+            modestbranding: 0,
+            rel: 0,
+          },
+          events: {
+            onReady: handlePlayerReady,
+            onStateChange: handleStateChange,
+            onPlaybackQualityChange: handleQualityChange,
+            onError: handlePlayerError,
+            onPlaybackRateChange: handleRateChange,
+          },
+        });
+
+        setTimeout(() => {
+          if (window.player && window.player.getPlayerState() === -1) {
+            console.error("🎮 Video failed to load - possibly invalid ID");
+            errorsRef.current.push({
+              code: "LOADING_FAILED",
+              message: "Video failed to load - possibly invalid ID",
+              timestamp: new Date().toISOString(),
+              atVideoTime: 0,
+            });
+
+            recordCriticalEvent("loading_error", {
+              type: "invalid_video_id",
+              videoId: id,
+              error: "Video failed to load - possibly invalid ID",
+              severity: "critical",
+            });
+
+            setStats((prev) => ({
+              ...prev,
+              errorCount: prev.errorCount + 1,
+            }));
+
+            addUIEvent({
+              type: "loadingError",
+              label: "❌ VIDEO LOAD FAILED",
+              color: "#dc2626",
+            });
+          }
+        }, 3000);
+      } catch (error) {
+        console.error("🎮 Player initialization error:", error);
+        errorsRef.current.push({
+          code: "INIT_FAILED",
+          message: `Player initialization failed: ${error.message}`,
+          timestamp: new Date().toISOString(),
+          atVideoTime: 0,
+        });
+
+        recordCriticalEvent("initialization_error", {
+          error: error.message,
+          videoId: id,
+          severity: "critical",
+        });
+
+        setStats((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }));
+
+        addUIEvent({
+          type: "initError",
+          label: "❌ PLAYER INIT FAILED",
+          color: "#dc2626",
+        });
+      }
     }
   };
 
@@ -476,7 +777,6 @@ const QoETrackerDemo = () => {
         const duration = (Date.now() - bufferingStartRef.current) / 1000;
         console.log(`⏱️ Buffering Duration: ${duration.toFixed(2)}s`);
 
-        // Record buffering event (CRITICAL)
         bufferingEventsRef.current.push({
           startTime: Math.floor(window.player.getCurrentTime()),
           endTime: Math.floor(window.player.getCurrentTime()),
@@ -500,13 +800,11 @@ const QoETrackerDemo = () => {
         color: "#10b981",
       });
 
-      // Start session ONLY if not already started AND not currently starting
       if (!sessionIdRef.current && !isStartingSessionRef.current) {
         console.log("🎯 First PLAY detected → starting session");
         startSession();
       }
 
-      // Start watch timer
       if (!timerRef.current) {
         timerRef.current = setInterval(() => {
           if (window.player && window.player.getPlayerState() === 1) {
@@ -533,7 +831,7 @@ const QoETrackerDemo = () => {
         timerRef.current = null;
       }
     } else if (event.data === 0) {
-      // ENDED - CRITICAL: Use closure to capture current sessionId
+      // ENDED
       console.log("⏹️ Video ended");
       addUIEvent({
         type: "stateChange",
@@ -565,7 +863,6 @@ const QoETrackerDemo = () => {
       currentQuality: stats.currentQuality,
     });
 
-    // Record quality change (CRITICAL)
     if (lastQualityRef.current) {
       qualityChangesRef.current.push({
         timestamp: new Date().toISOString(),
@@ -596,7 +893,7 @@ const QoETrackerDemo = () => {
     });
   };
 
-  const handleError = (event) => {
+  const handlePlayerError = (event) => {
     const errorMap = {
       2: "Invalid Parameter",
       5: "HTML5 Player Error",
@@ -605,24 +902,31 @@ const QoETrackerDemo = () => {
       150: "Video Not Embeddable",
     };
 
-    const errorMsg = errorMap[event.data] || "Unknown Error";
+    const errorMsg = errorMap[event.data] || `Unknown Error (${event.data})`;
+    const videoTime = Math.floor(window.player?.getCurrentTime() || 0);
+
     console.error("🎮 YouTube Event: ERROR", {
       errorCode: event.data,
       errorMessage: errorMsg,
+      videoTime,
     });
 
-    // Record error (CRITICAL)
-    errorsRef.current.push({
+    const errorObject = {
       code: String(event.data),
       message: errorMsg,
       timestamp: new Date().toISOString(),
-      atVideoTime: Math.floor(window.player?.getCurrentTime() || 0),
-    });
+      atVideoTime: videoTime,
+      severity: "critical",
+      type: "youtube_player_error",
+    };
 
-    recordCriticalEvent("error", {
+    errorsRef.current.push(errorObject);
+
+    recordCriticalEvent("playback_error", {
       errorCode: String(event.data),
       errorMessage: errorMsg,
-      videoTime: Math.floor(window.player?.getCurrentTime() || 0),
+      videoTime: videoTime,
+      severity: "critical",
     });
 
     setStats((prev) => ({
@@ -632,7 +936,7 @@ const QoETrackerDemo = () => {
 
     addUIEvent({
       type: "error",
-      label: `❌ Error: ${errorMsg}`,
+      label: `❌ Error ${event.data}: ${errorMsg}`,
       color: "#ef4444",
     });
 
@@ -683,10 +987,12 @@ const QoETrackerDemo = () => {
     eventCountRef.current = {};
     setSessionId(null);
     setDbEvents(0);
+    setOfflineQueuedEvents(0);
+    setNetworkErrors([]);
     isStartingSessionRef.current = false;
     sessionIdRef.current = null;
-    videoIdRef.current = "dQw4w9WgXcQ"; // Reset to default
-    totalWatchTimeRef.current = 0; // Reset watch time ref
+    videoIdRef.current = "dQw4w9WgXcQ";
+    totalWatchTimeRef.current = 0;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -696,7 +1002,7 @@ const QoETrackerDemo = () => {
   // ============= FETCH DATA FROM DATABASE =============
   const fetchSessionDetails = async () => {
     if (!sessionId) {
-      alert("No active session. Start by playing a video.");
+      alert("❌ No active session. Start by playing a video.");
       return;
     }
 
@@ -708,8 +1014,16 @@ const QoETrackerDemo = () => {
       const data = await response.json();
 
       console.log("📊 Session Details:", data);
+      console.log("📋 Recorded Errors:", data.data.recordedErrors);
+      console.log("🚨 Recorded Crashes:", data.data.recordedCrashes);
       setSyncStatus("success");
       setTimeout(() => setSyncStatus("idle"), 2000);
+
+      addUIEvent({
+        type: "fetchSession",
+        label: "📥 SESSION DETAILS FETCHED",
+        color: "#3b82f6",
+      });
     } catch (error) {
       console.error("❌ Failed to fetch session:", error);
       setSyncStatus("error");
@@ -722,12 +1036,21 @@ const QoETrackerDemo = () => {
       setSyncStatus("syncing");
       console.log("📊 Fetching analytics from database...");
 
-      const response = await fetch(`${apiUrl}/video/${videoId}/analytics`);
+      const response = await fetch(`${apiUrl}/analytics`);
       const data = await response.json();
 
       console.log("📈 Video Analytics:", data);
+      console.log("🔴 Recorded Errors:", data.data.recordedErrors);
+      console.log("🚨 Recorded Crashes:", data.data.recordedCrashes);
+      console.log("📊 Error Types:", data.data.topErrorTypes);
       setSyncStatus("success");
       setTimeout(() => setSyncStatus("idle"), 2000);
+
+      addUIEvent({
+        type: "fetchAnalytics",
+        label: "📊 ANALYTICS FETCHED",
+        color: "#10b981",
+      });
     } catch (error) {
       console.error("❌ Failed to fetch analytics:", error);
       setSyncStatus("error");
@@ -856,9 +1179,41 @@ const QoETrackerDemo = () => {
   return (
     <div style={mainStyle}>
       <div style={containerStyle}>
-        <h1 style={titleStyle}>🎬 YouTube QoE Tracker (Session-Based)</h1>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "8px",
+          }}
+        >
+          <h1 style={titleStyle}>🎬 YouTube QoE Tracker (Session-Based)</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <label style={{ color: "#94a3b8", fontSize: "14px" }}>
+              User:
+            </label>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                background: "#334155",
+                border: "1px solid #475569",
+                borderRadius: "6px",
+                color: "#fff",
+                fontSize: "14px",
+              }}
+            >
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <p style={{ color: "#94a3b8", marginBottom: "8px" }}>
-          Real-time Quality of Experience - Session Tracking
+          Real-time Quality of Experience - Session Tracking with Error Detection
         </p>
 
         {/* Database Sync Status */}
@@ -889,6 +1244,22 @@ const QoETrackerDemo = () => {
             `✅ Synced! (Session: ${sessionId?.substr(0, 20)}...)`}
           {syncStatus === "error" && "❌ Sync failed - Check console"}
         </div>
+
+        {/* Offline Queue Status */}
+        {offlineQueuedEvents > 0 && (
+          <div
+            style={{
+              background: "#7c2d12",
+              border: "2px solid #ea580c",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              marginBottom: "12px",
+              fontSize: "12px",
+            }}
+          >
+            📦 {offlineQueuedEvents} event(s) queued offline - waiting to sync...
+          </div>
+        )}
 
         {/* URL Input */}
         <div style={inputSectionStyle}>
@@ -966,8 +1337,19 @@ const QoETrackerDemo = () => {
                     marginTop: "8px",
                   }}
                 >
-                  ✅ Critical Events Recorded: {dbEvents}
+                  ✅ Events Recorded: {dbEvents}
                 </p>
+                {offlineQueuedEvents > 0 && (
+                  <p
+                    style={{
+                      color: "#ea580c",
+                      fontSize: "12px",
+                      marginTop: "4px",
+                    }}
+                  >
+                    📦 Offline Queue: {offlineQueuedEvents}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -1002,7 +1384,11 @@ const QoETrackerDemo = () => {
               {stats.qoe}
             </div>
             <div
-              style={{ fontSize: "12px", opacity: 0.8, marginBottom: "24px" }}
+              style={{
+                fontSize: "12px",
+                opacity: 0.8,
+                marginBottom: "24px",
+              }}
             >
               /100
             </div>
@@ -1099,7 +1485,7 @@ const QoETrackerDemo = () => {
               Reset Stats
             </button>
 
-            {/* <button
+            <button
               onClick={fetchSessionDetails}
               style={{
                 width: "100%",
@@ -1115,9 +1501,9 @@ const QoETrackerDemo = () => {
               }}
             >
               📥 Session Details
-            </button> */}
+            </button>
 
-            {/* <button
+            <button
               onClick={fetchAnalytics}
               style={{
                 width: "100%",
@@ -1132,7 +1518,7 @@ const QoETrackerDemo = () => {
               }}
             >
               📊 Analytics
-            </button> */}
+            </button>
           </div>
         </div>
 
@@ -1154,7 +1540,11 @@ const QoETrackerDemo = () => {
             }}
           >
             <p
-              style={{ color: "#fca5a5", fontSize: "12px", fontWeight: "600" }}
+              style={{
+                color: "#fca5a5",
+                fontSize: "12px",
+                fontWeight: "600",
+              }}
             >
               Buffering Events
             </p>
@@ -1171,7 +1561,11 @@ const QoETrackerDemo = () => {
             }}
           >
             <p
-              style={{ color: "#fed7aa", fontSize: "12px", fontWeight: "600" }}
+              style={{
+                color: "#fed7aa",
+                fontSize: "12px",
+                fontWeight: "600",
+              }}
             >
               Playback Errors
             </p>
@@ -1188,7 +1582,11 @@ const QoETrackerDemo = () => {
             }}
           >
             <p
-              style={{ color: "#93c5fd", fontSize: "12px", fontWeight: "600" }}
+              style={{
+                color: "#93c5fd",
+                fontSize: "12px",
+                fontWeight: "600",
+              }}
             >
               Quality Changes
             </p>
@@ -1205,7 +1603,11 @@ const QoETrackerDemo = () => {
             }}
           >
             <p
-              style={{ color: "#86efac", fontSize: "12px", fontWeight: "600" }}
+              style={{
+                color: "#86efac",
+                fontSize: "12px",
+                fontWeight: "600",
+              }}
             >
               Watch Duration
             </p>
@@ -1377,9 +1779,13 @@ const QoETrackerDemo = () => {
           }}
         >
           <h3
-            style={{ color: "#fff", fontWeight: "bold", marginBottom: "12px" }}
+            style={{
+              color: "#fff",
+              fontWeight: "bold",
+              marginBottom: "12px",
+            }}
           >
-            📋 Session-Based Tracking Guide:
+            📋 Session-Based Tracking Guide with Error Detection:
           </h3>
           <ol
             style={{
@@ -1397,32 +1803,36 @@ const QoETrackerDemo = () => {
               Video"
             </li>
             <li>
-              <strong>Play Video:</strong> A session automatically starts when
-              you play
+              <strong>Play Video:</strong> Session automatically starts when you
+              play
             </li>
             <li>
-              <strong>Session Tracking:</strong> Only CRITICAL events are saved
-              (buffering, quality, errors)
+              <strong>Error Tracking:</strong> ALL errors are now captured
+              (network, crashes, loading)
             </li>
             <li>
               <strong>Watch Console:</strong> See real-time event logs with
-              session ID
+              session ID and offline queue status
+            </li>
+            <li>
+              <strong>Offline Support:</strong> Events queue locally and sync
+              when network returns
             </li>
             <li>
               <strong>End Session:</strong> Automatically ends when video
               finishes
             </li>
-            {/* <li>
-              <strong>View Details:</strong> Click "Session Details" to see
-              aggregated metrics
+            <li>
+              <strong>View Details:</strong> Click "Session Details" to see all
+              recorded errors
             </li>
             <li>
-              <strong>View Analytics:</strong> Click "Analytics" to see all
-              sessions for this video
-            </li> */}
+              <strong>View Analytics:</strong> Click "Analytics" to see error
+              types and counts
+            </li>
           </ol>
 
-          {/* <div
+          <div
             style={{
               background: "rgba(0,0,0,0.2)",
               padding: "12px",
@@ -1431,20 +1841,16 @@ const QoETrackerDemo = () => {
               fontSize: "11px",
             }}
           >
-            <strong>💡 Key Improvements:</strong>
+            <strong>✅ Error Tracking Features:</strong>
             <div style={{ marginTop: "8px", color: "#93c5fd" }}>
-              ✅ ONE session document per watch (not 50+ events)
-              <br />
-              ✅ Only CRITICAL events stored (buffering, quality, errors)
-              <br />
-              ✅ Metrics pre-calculated in session
-              <br />
-              ✅ 10x smaller database
-              <br />
-              ✅ 20x faster queries
-              <br />✅ Ready for analytics dashboard
+              ✅ Network offline detection + offline queue<br />
+              ✅ Invalid video ID error capture<br />
+              ✅ JavaScript crash detection<br />
+              ✅ YouTube player error handling<br />
+              ✅ Automatic sync when network returns<br />
+              ✅ All errors visible in Session Details & Analytics
             </div>
-          </div> */}
+          </div>
         </div>
       </div>
     </div>
