@@ -1485,7 +1485,7 @@ const QoETrackerDemo = () => {
               Reset Stats
             </button>
 
-            <button
+            {/* <button
               onClick={fetchSessionDetails}
               style={{
                 width: "100%",
@@ -1518,7 +1518,7 @@ const QoETrackerDemo = () => {
               }}
             >
               📊 Analytics
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -1822,17 +1822,17 @@ const QoETrackerDemo = () => {
               <strong>End Session:</strong> Automatically ends when video
               finishes
             </li>
-            <li>
+            {/* <li>
               <strong>View Details:</strong> Click "Session Details" to see all
               recorded errors
             </li>
             <li>
               <strong>View Analytics:</strong> Click "Analytics" to see error
               types and counts
-            </li>
+            </li> */}
           </ol>
 
-          <div
+          {/* <div
             style={{
               background: "rgba(0,0,0,0.2)",
               padding: "12px",
@@ -1850,7 +1850,7 @@ const QoETrackerDemo = () => {
               ✅ Automatic sync when network returns<br />
               ✅ All errors visible in Session Details & Analytics
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
