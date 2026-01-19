@@ -220,7 +220,7 @@ const QoEDashboard = () => {
         </div>
 
         {/* Date Range Filters */}
-        {/* <div className="bg-slate-700 p-6 rounded-lg mb-8">
+        <div className="bg-slate-700 p-6 rounded-lg mb-8">
           <h2 className="text-lg font-bold text-white mb-4">📅 Filter by Date Range</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
@@ -281,7 +281,7 @@ const QoEDashboard = () => {
               </p>
             </div>
           )}
-        </div> */}
+        </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
