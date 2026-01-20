@@ -78,6 +78,7 @@ const QoEDashboard = () => {
   // Fetch initial data on component mount
   useEffect(() => {
     fetchDashboardData();
+    document.title = "Consolidated QoE Dashboard";
   }, []);
 
   // ==================== HANDLE APPLY FILTERS ====================
@@ -173,8 +174,8 @@ const QoEDashboard = () => {
     value: count
   }));
 
-  const errorCodeData = Object.entries(dashboardData.topErrorCodes || {}).map(([code, count]) => ({
-    name: `Error ${code}`,
+  const errorMessageData = Object.entries(dashboardData.topErrorMessages || {}).map(([msg, count]) => ({
+    name: msg,
     value: count
   }));
 
@@ -194,7 +195,7 @@ const QoEDashboard = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">QoE Analytics Dashboard</h1>
+            <h1 className="text-4xl font-bold text-white mb-2">📊 Consolidated QoE Dashboard</h1>
             <p className="text-slate-400">Video platform quality monitoring</p>
             <p className="text-sm text-slate-500 mt-1">
               <Calendar className="inline mr-1" size={14} />
@@ -353,7 +354,10 @@ const QoEDashboard = () => {
                       <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Tooltip
+                    formatter={(value, name) => [`Total: ${value} users on ${name}`, "Device Usage"]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                  />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
@@ -371,7 +375,10 @@ const QoEDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Tooltip
+                    formatter={(value, name, props) => [`Total: ${value} users on ${props.payload.name} network`, "Network Coverage"]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                  />
                   <Bar dataKey="value" fill="#3b82f6" />
                 </BarChart>
               </ResponsiveContainer>
@@ -389,23 +396,29 @@ const QoEDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                   <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={80} />
                   <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Tooltip
+                    formatter={(value, name, props) => [`Detected ${value} cases of ${props.payload.name}`, "Problem Areas"]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                  />
                   <Bar dataKey="value" fill="#ef4444" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* Error Codes */}
-          {errorCodeData.length > 0 && (
+          {/* Common Error Messages */}
+          {errorMessageData.length > 0 && (
             <div className="bg-slate-700 p-6 rounded-lg">
-              <h2 className="text-xl font-bold text-white mb-4">Error Codes Distribution</h2>
+              <h2 className="text-xl font-bold text-white mb-4">Common Error Messages</h2>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={errorCodeData}>
+                <BarChart data={errorMessageData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }} />
+                  <Tooltip
+                    formatter={(value, name, props) => [`Occurred ${value} times: ${props.payload.name}`, "Frequency"]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                  />
                   <Bar dataKey="value" fill="#f59e0b" />
                 </BarChart>
               </ResponsiveContainer>

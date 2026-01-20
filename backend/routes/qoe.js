@@ -303,7 +303,7 @@ router.get('/analytics', async (req, res) => {
           avgWatchDuration: 0,
           deviceBreakdown: {},
           networkTypeBreakdown: {},
-          topErrorCodes: {},
+          topErrorMessages: {},
           topErrorTypes: {},
           dateRange: {
             from: startDate || 'All time',
@@ -362,13 +362,13 @@ router.get('/analytics', async (req, res) => {
       networkBreakdown[network] = (networkBreakdown[network] || 0) + 1;
     });
 
-    // Error code breakdown
-    const errorCodeBreakdown = {};
+    // Error message breakdown
+    const errorMessageBreakdown = {};
     sessions.forEach(s => {
       if (s.playbackErrors) {
         s.playbackErrors.forEach(e => {
-          const code = e.code || 'unknown';
-          errorCodeBreakdown[code] = (errorCodeBreakdown[code] || 0) + 1;
+          const message = e.message || `Error ${e.code}` || 'unknown';
+          errorMessageBreakdown[message] = (errorMessageBreakdown[message] || 0) + 1;
         });
       }
     });
@@ -406,7 +406,7 @@ router.get('/analytics', async (req, res) => {
       avgWatchDuration,
       deviceBreakdown,
       networkTypeBreakdown: networkBreakdown,
-      topErrorCodes: errorCodeBreakdown,
+      topErrorMessages: errorMessageBreakdown,
       topErrorTypes: errorTypeBreakdown,        // ← NEW
     };
 
@@ -500,11 +500,12 @@ router.get('/video/:videoId/analytics', async (req, res) => {
       networkBreakdown[s.networkType] = (networkBreakdown[s.networkType] || 0) + 1;
     });
 
-    // Error breakdown
+    // Error breakdown by message
     const errorBreakdown = {};
     sessions.forEach(s => {
       s.playbackErrors.forEach(e => {
-        errorBreakdown[e.code] = (errorBreakdown[e.code] || 0) + 1;
+        const key = e.message || `Error ${e.code}` || 'unknown';
+        errorBreakdown[key] = (errorBreakdown[key] || 0) + 1;
       });
     });
 

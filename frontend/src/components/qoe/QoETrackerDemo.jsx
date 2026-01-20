@@ -34,22 +34,84 @@ const QoETrackerDemo = () => {
   const [dbEvents, setDbEvents] = useState(0);
   const [networkErrors, setNetworkErrors] = useState([]);
   const [offlineQueuedEvents, setOfflineQueuedEvents] = useState(0);
+  const [showGuide, setShowGuide] = useState(false);
 
-  // Sample users for selection
-  const users = [
-    { id: 'user_1', name: 'User 1' },
-    { id: 'user_2', name: 'User 2' },
-    { id: 'user_3', name: 'User 3' },
-    { id: 'user_4', name: 'User 4' },
-    { id: 'user_5', name: 'User 5' },
-    { id: 'user_6', name: 'User 6' },
-    { id: 'user_7', name: 'User 7' },
-    { id: 'user_8', name: 'User 8' },
-    { id: 'user_9', name: 'User 9' },
-    { id: 'user_10', name: 'User 10' },
-  ];
+  // ============= DEVICE FINGERPRINTING FOR USER TRACKING =============
+  // OLD CODE: Sample users for manual selection (commented for future use)
+  // const users = [
+  //   { id: 'user_1', name: 'User 1' },
+  //   { id: 'user_2', name: 'User 2' },
+  //   { id: 'user_3', name: 'User 3' },
+  //   { id: 'user_4', name: 'User 4' },
+  //   { id: 'user_5', name: 'User 5' },
+  //   { id: 'user_6', name: 'User 6' },
+  //   { id: 'user_7', name: 'User 7' },
+  //   { id: 'user_8', name: 'User 8' },
+  //   { id: 'user_9', name: 'User 9' },
+  //   { id: 'user_10', name: 'User 10' },
+  // ];
+  // const [selectedUserId, setSelectedUserId] = useState('user_1');
 
-  const [selectedUserId, setSelectedUserId] = useState('user_1');
+  // NEW: Device-based user tracking
+  const [deviceFingerprint, setDeviceFingerprint] = useState(null);
+  const [platformType, setPlatformType] = useState('unknown');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+
+  // Generate device fingerprint based on platform and browser characteristics
+  const generateDeviceFingerprint = () => {
+    const ua = navigator.userAgent;
+    const platform = navigator.platform || 'unknown';
+    const language = navigator.language || 'unknown';
+    const screenRes = `${window.screen.width}x${window.screen.height}`;
+    const colorDepth = window.screen.colorDepth;
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Detect platform type
+    let detectedPlatform = 'web';
+    if (/Smart-?TV|SMART-TV|NetCast|AppleTV|GoogleTV|Tizen|WebOS/i.test(ua)) {
+      detectedPlatform = 'tv';
+    } else if (/Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+      detectedPlatform = 'mobile';
+    }
+
+    // Create a unique fingerprint string
+    const fingerprintString = `${detectedPlatform}_${ua}_${platform}_${screenRes}_${colorDepth}_${language}_${timezone}`;
+
+    // Generate a hash-like ID from the fingerprint
+    let hash = 0;
+    for (let i = 0; i < fingerprintString.length; i++) {
+      const char = fingerprintString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+
+    const uniqueId = `${detectedPlatform}_${Math.abs(hash).toString(36)}`;
+
+    return {
+      userId: uniqueId,
+      platform: detectedPlatform,
+      details: {
+        userAgent: ua,
+        platform: platform,
+        screenResolution: screenRes,
+        colorDepth: colorDepth,
+        language: language,
+        timezone: timezone
+      }
+    };
+  };
+
+  // Initialize device fingerprint on component mount
+  useEffect(() => {
+    const fingerprint = generateDeviceFingerprint();
+    setDeviceFingerprint(fingerprint);
+    setSelectedUserId(fingerprint.userId);
+    setPlatformType(fingerprint.platform);
+    console.log('🔐 Device Fingerprint Generated:', fingerprint);
+
+    // Set document title
+    document.title = "Single Player QoE Tracking";
+  }, []);
 
   // Tracking refs
   const eventCountRef = useRef({});
@@ -427,7 +489,7 @@ const QoETrackerDemo = () => {
             const hostname = new URL(resource.name).hostname;
             cdnInfo.detectedHostname = hostname;
             cdnInfo.detectionMethod = "performance_api";
-          } catch (e) {}
+          } catch (e) { }
         }
       });
 
@@ -443,7 +505,7 @@ const QoETrackerDemo = () => {
             try {
               const hostname = new URL(resource.name).hostname;
               cdnInfo.detectedHostname = hostname;
-            } catch (e) {}
+            } catch (e) { }
           }
         });
       }
@@ -863,20 +925,19 @@ const QoETrackerDemo = () => {
       currentQuality: stats.currentQuality,
     });
 
-    if (lastQualityRef.current) {
-      qualityChangesRef.current.push({
-        timestamp: new Date().toISOString(),
-        fromQuality: lastQualityRef.current,
-        toQuality: quality,
-        atVideoTime: Math.floor(window.player.getCurrentTime()),
-      });
+    const fromQuality = lastQualityRef.current || 'initial';
+    qualityChangesRef.current.push({
+      timestamp: new Date().toISOString(),
+      fromQuality,
+      toQuality: quality,
+      atVideoTime: Math.floor(window.player.getCurrentTime()),
+    });
 
-      recordCriticalEvent("quality_change", {
-        fromQuality: lastQualityRef.current,
-        toQuality: quality,
-        videoTime: Math.floor(window.player.getCurrentTime()),
-      });
-    }
+    recordCriticalEvent("quality_change", {
+      fromQuality,
+      toQuality: quality,
+      videoTime: Math.floor(window.player.getCurrentTime()),
+    });
 
     lastQualityRef.current = quality;
 
@@ -1184,36 +1245,182 @@ const QoETrackerDemo = () => {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "8px",
+            marginBottom: "16px",
           }}
         >
-          <h1 style={titleStyle}>🎬 YouTube QoE Tracker (Session-Based)</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <label style={{ color: "#94a3b8", fontSize: "14px" }}>
-              User:
-            </label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <h1 style={{ ...titleStyle, marginBottom: 0 }}>🎯 Single Player QoE Tracking</h1>
+            <button
+              onClick={() => setShowGuide(!showGuide)}
               style={{
-                padding: "8px 12px",
-                background: "#334155",
-                border: "1px solid #475569",
-                borderRadius: "6px",
+                background: "#1e3a8a",
+                border: "1px solid #3b82f6",
                 color: "#fff",
-                fontSize: "14px",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: "600",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s"
               }}
             >
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
+              📋 {showGuide ? "Hide" : "Show"} Guide
+              <span style={{
+                transform: showGuide ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+                display: "inline-block"
+              }}>▼</span>
+            </button>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {/* NEW: Device platform indicator */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "#334155",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              border: "1px solid #475569"
+            }}>
+              <span style={{ fontSize: "20px" }}>
+                {platformType === 'mobile' ? '📱' : platformType === 'tv' ? '📺' : '💻'}
+              </span>
+              <div>
+                <div style={{ color: "#94a3b8", fontSize: "10px", textTransform: "uppercase" }}>
+                  Platform
+                </div>
+                <div style={{ color: "#fff", fontSize: "14px", fontWeight: "600" }}>
+                  {platformType.charAt(0).toUpperCase() + platformType.slice(1)}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: "#334155",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              border: "1px solid #475569",
+              maxWidth: "300px"
+            }}>
+              <div style={{ color: "#94a3b8", fontSize: "10px", textTransform: "uppercase" }}>
+                Device ID
+              </div>
+              <div style={{
+                color: "#fff",
+                fontSize: "12px",
+                fontFamily: "monospace",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }}>
+                {selectedUserId || 'Generating...'}
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Accordion Guide Content */}
+        {showGuide && (
+          <div
+            style={{
+              background: "#1e3a8a",
+              border: "2px solid #3b82f6",
+              padding: "24px",
+              borderRadius: "8px",
+              marginBottom: "24px",
+              animation: "fadeIn 0.3s ease-out"
+            }}
+          >
+            <h3
+              style={{
+                color: "#fff",
+                fontWeight: "bold",
+                marginBottom: "12px",
+              }}
+            >
+              📋 Session-Based Tracking Guide with Error Detection:
+            </h3>
+            <ol
+              style={{
+                color: "#dbeafe",
+                fontSize: "12px",
+                listStylePosition: "inside",
+                lineHeight: 1.8,
+              }}
+            >
+              <li>
+                <strong>Open Browser Console:</strong> Press F12 → Console tab
+              </li>
+              <li>
+                <strong>Load Video:</strong> Paste YouTube URL and click "Load Video"
+              </li>
+              <li>
+                <strong>Play Video:</strong> Session automatically starts when you play
+              </li>
+              <li>
+                <strong>Error Tracking:</strong> ALL errors are now captured (network, crashes)
+              </li>
+              <li>
+                <strong>Watch Console:</strong> See real-time event logs with session ID and offline queue status
+              </li>
+              <li>
+                <strong>Offline Support:</strong> Events queue locally and sync when network returns
+              </li>
+              <li>
+                <strong>End Session:</strong> Automatically ends when video finishes
+              </li>
+            </ol>
+          </div>
+        )}
+
+        {/* NEW: Detailed Device Information */}
+        {deviceFingerprint && (
+          <div style={{
+            background: "rgba(30, 41, 59, 0.5)",
+            border: "1px solid #334155",
+            borderRadius: "8px",
+            padding: "16px",
+            marginBottom: "24px",
+            fontSize: "12px"
+          }}>
+            <h3 style={{ color: "#3b82f6", fontWeight: "bold", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              🔍 Device Technical Details
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+              <div>
+                <span style={{ color: "#94a3b8" }}>User Agent:</span>
+                <div style={{ color: "#cbd5e1", marginTop: "4px", wordBreak: "break-all", fontFamily: "monospace" }}>
+                  {deviceFingerprint.details.userAgent}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div>
+                  <span style={{ color: "#94a3b8" }}>OS Platform:</span>
+                  <div style={{ color: "#fff" }}>{deviceFingerprint.details.platform}</div>
+                </div>
+                <div>
+                  <span style={{ color: "#94a3b8" }}>Resolution:</span>
+                  <div style={{ color: "#fff" }}>{deviceFingerprint.details.screenResolution}</div>
+                </div>
+                <div>
+                  <span style={{ color: "#94a3b8" }}>Language:</span>
+                  <div style={{ color: "#fff" }}>{deviceFingerprint.details.language}</div>
+                </div>
+                <div>
+                  <span style={{ color: "#94a3b8" }}>Timezone:</span>
+                  <div style={{ color: "#fff" }}>{deviceFingerprint.details.timezone}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <p style={{ color: "#94a3b8", marginBottom: "8px" }}>
-          Real-time Quality of Experience - Session Tracking with Error Detection
+          Real-time Quality of Experience - Single Player Tracking (Mobile, Web, TV)
         </p>
 
         {/* Database Sync Status */}
@@ -1223,15 +1430,14 @@ const QoETrackerDemo = () => {
               syncStatus === "success"
                 ? "#065f46"
                 : syncStatus === "error"
-                ? "#7f1d1d"
-                : "transparent",
-            border: `2px solid ${
-              syncStatus === "success"
-                ? "#10b981"
-                : syncStatus === "error"
+                  ? "#7f1d1d"
+                  : "transparent",
+            border: `2px solid ${syncStatus === "success"
+              ? "#10b981"
+              : syncStatus === "error"
                 ? "#ef4444"
                 : "transparent"
-            }`,
+              }`,
             padding: "8px 12px",
             borderRadius: "6px",
             marginBottom: "12px",
@@ -1643,6 +1849,7 @@ const QoETrackerDemo = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
+                    formatter={(value, name, props) => [`Total: ${value} times ${props.payload.name} occurred`, "Activities"]}
                     contentStyle={{
                       backgroundColor: "#1e293b",
                       border: "1px solid #475569",
@@ -1694,6 +1901,7 @@ const QoETrackerDemo = () => {
                     ))}
                   </Pie>
                   <Tooltip
+                    formatter={(value, name) => [`Watched ${value} times in ${name}`, "Usage"]}
                     contentStyle={{
                       backgroundColor: "#1e293b",
                       border: "1px solid #475569",
@@ -1768,90 +1976,6 @@ const QoETrackerDemo = () => {
           </div>
         </div>
 
-        {/* Instructions */}
-        <div
-          style={{
-            background: "#1e3a8a",
-            border: "2px solid #3b82f6",
-            padding: "24px",
-            borderRadius: "8px",
-            marginTop: "32px",
-          }}
-        >
-          <h3
-            style={{
-              color: "#fff",
-              fontWeight: "bold",
-              marginBottom: "12px",
-            }}
-          >
-            📋 Session-Based Tracking Guide with Error Detection:
-          </h3>
-          <ol
-            style={{
-              color: "#dbeafe",
-              fontSize: "12px",
-              listStylePosition: "inside",
-              lineHeight: 1.8,
-            }}
-          >
-            <li>
-              <strong>Open Browser Console:</strong> Press F12 → Console tab
-            </li>
-            <li>
-              <strong>Load Video:</strong> Paste YouTube URL and click "Load
-              Video"
-            </li>
-            <li>
-              <strong>Play Video:</strong> Session automatically starts when you
-              play
-            </li>
-            <li>
-              <strong>Error Tracking:</strong> ALL errors are now captured
-              (network, crashes, loading)
-            </li>
-            <li>
-              <strong>Watch Console:</strong> See real-time event logs with
-              session ID and offline queue status
-            </li>
-            <li>
-              <strong>Offline Support:</strong> Events queue locally and sync
-              when network returns
-            </li>
-            <li>
-              <strong>End Session:</strong> Automatically ends when video
-              finishes
-            </li>
-            {/* <li>
-              <strong>View Details:</strong> Click "Session Details" to see all
-              recorded errors
-            </li>
-            <li>
-              <strong>View Analytics:</strong> Click "Analytics" to see error
-              types and counts
-            </li> */}
-          </ol>
-
-          {/* <div
-            style={{
-              background: "rgba(0,0,0,0.2)",
-              padding: "12px",
-              borderRadius: "6px",
-              marginTop: "12px",
-              fontSize: "11px",
-            }}
-          >
-            <strong>✅ Error Tracking Features:</strong>
-            <div style={{ marginTop: "8px", color: "#93c5fd" }}>
-              ✅ Network offline detection + offline queue<br />
-              ✅ Invalid video ID error capture<br />
-              ✅ JavaScript crash detection<br />
-              ✅ YouTube player error handling<br />
-              ✅ Automatic sync when network returns<br />
-              ✅ All errors visible in Session Details & Analytics
-            </div>
-          </div> */}
-        </div>
       </div>
     </div>
   );

@@ -23,14 +23,14 @@ function App() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
           <Tabs value={tabValue} onChange={handleTabChange} aria-label="main tabs">
             {/* <Tab label="Video Processing" /> */}
-            <Tab label="QoE Tracking" />
-            <Tab label="Analytics" />
+            <Tab label="Single Player Tracking" />
+            <Tab label="Consolidated Dashboard" />
           </Tabs>
         </Box>
 
         {/* Content based on selected tab */}
         {/* {tabValue === 0 && <ContentGeneration />} */}
-        {tabValue === 0 &&  <QoETrackerDemo />}
+        {tabValue === 0 && <QoETrackerDemo />}
 
         {/* Full-screen QoE Tracker */}
         {tabValue === 1 && (
@@ -41,7 +41,7 @@ function App() {
             padding: 0,
             background: 'linear-gradient(to bottom right, #0f172a, #1e293b)',
           }}>
-             <AnalyticsPage />
+            <AnalyticsPage />
           </div>
         )}
 
