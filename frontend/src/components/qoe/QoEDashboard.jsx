@@ -9,52 +9,52 @@ const QoEDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const today = new Date().toISOString().split('T')[0];
   const [dateRange, setDateRange] = useState({
-    start: '',
-    end: ''
+    start: today,
+    end: today
   });
   const [appliedDateRange, setAppliedDateRange] = useState({
-    start: '',
-    end: ''
+    start: today,
+    end: today
   });
   const [selectedVideo, setSelectedVideo] = useState('all');
+  const [filters, setFilters] = useState({
+    userId: '',
+    videoId: ''
+  });
+  const [appliedFilters, setAppliedFilters] = useState({
+    userId: '',
+    videoId: ''
+  });
   const API_BASE_URL = import.meta.env.VITE_API_BASE || '';
 
   // ==================== FETCH ANALYTICS WITH DATE FILTER ====================
-  const fetchDashboardData = async (startDate = '', endDate = '') => {
+  const fetchDashboardData = async (
+    startDate = dateRange.start,
+    endDate = dateRange.end,
+    userId = filters.userId,
+    videoId = filters.videoId
+  ) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Build query parameters
       const params = new URLSearchParams();
 
       // Validate and add dates
-      if (startDate) {
-        const start = new Date(startDate);
-        if (!isNaN(start.getTime())) {
-          params.append('startDate', startDate);
-        } else {
-          console.warn('⚠️ Invalid start date:', startDate);
-        }
-      }
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
 
-      if (endDate) {
-        const end = new Date(endDate);
-        if (!isNaN(end.getTime())) {
-          params.append('endDate', endDate);
-        } else {
-          console.warn('⚠️ Invalid end date:', endDate);
-        }
-      }
+      // Use the passed values instead of reading from state
+      if (userId && userId !== 'all') params.append('userId', userId);
+      if (videoId && videoId !== 'all') params.append('videoId', videoId);
 
       const queryString = params.toString();
-      const url = queryString
-        ? `${API_BASE_URL}/api/qoe/analytics?${queryString}`
-        : `${API_BASE_URL}/api/qoe/analytics`;
+      const url = `${API_BASE_URL}/api/qoe/analytics${queryString ? `?${queryString}` : ''}`;
 
       console.log('📊 Fetching analytics from:', url);
-      console.log('📅 Date Range:', { startDate, endDate });
+      console.log('📅 Filters applied:', { startDate, endDate, userId, videoId });
 
       const response = await fetch(url);
       const result = await response.json();
@@ -62,6 +62,7 @@ const QoEDashboard = () => {
       if (result.success) {
         setDashboardData(result.data);
         setAppliedDateRange({ start: startDate, end: endDate });
+        setAppliedFilters({ userId, videoId });
         console.log('✅ Analytics fetched:', result.data);
         console.log('📊 Date range in response:', result.data.dateRange);
       } else {
@@ -77,7 +78,7 @@ const QoEDashboard = () => {
 
   // Fetch initial data on component mount
   useEffect(() => {
-    fetchDashboardData();
+    fetchDashboardData(dateRange.start, dateRange.end, filters.userId, filters.videoId);
     document.title = "Consolidated QoE Dashboard";
   }, []);
 
@@ -97,15 +98,22 @@ const QoEDashboard = () => {
       }
     }
 
-    console.log('✅ Applying filters:', dateRange);
-    fetchDashboardData(dateRange.start, dateRange.end);
+    console.log('✅ Applying filters:', { dateRange, filters });
+    fetchDashboardData(dateRange.start, dateRange.end, filters.userId, filters.videoId);
   };
 
   // ==================== HANDLE CLEAR FILTERS ====================
   const handleClearFilters = () => {
-    setDateRange({ start: '', end: '' });
-    setAppliedDateRange({ start: '', end: '' });
-    fetchDashboardData('', '');
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1. Update states for UI (async)
+    setDateRange({ start: today, end: today });
+    setFilters({ userId: '', videoId: '' });
+    setAppliedDateRange({ start: today, end: today });
+    setAppliedFilters({ userId: '', videoId: '' });
+
+    // 2. Fetch data immediately with explicit "empty" values to avoid race condition
+    fetchDashboardData(today, today, '', '');
   };
 
   // ==================== HANDLE EXPORT ====================
@@ -225,31 +233,88 @@ const QoEDashboard = () => {
 
         {/* Filters */}
         <div className="bg-slate-700/50 backdrop-blur-sm p-4 md:p-6 rounded-xl mb-8 border border-slate-600">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Start Date</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Start Date</label>
               <input
                 type="date"
                 value={dateRange.start}
                 onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">End Date</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">End Date</label>
               <input
                 type="date"
                 value={dateRange.end}
                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>
+
+            {/* NEW: Video Filter */}
+            <div className="space-y-1 text-white">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter by Video</label>
+              <select
+                value={filters.videoId}
+                onChange={(e) => setFilters({ ...filters, videoId: e.target.value })}
+                disabled={!!filters.userId}
+                className={`w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none transition-all ${filters.userId ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer hover:border-slate-400'
+                  }`}
+              >
+                <option value="">All Videos</option>
+                {dashboardData.availableFilters?.videos.map(v => (
+                  <option key={v.id} value={v.id}>{v.label} ({v.id})</option>
+                ))}
+              </select>
+              {filters.userId && (
+                <p className="text-[9px] text-yellow-500/80 mt-1 italic">Clear user filter to enable video selection</p>
+              )}
+            </div>
+
+            {/* NEW: User Filter */}
+            <div className="space-y-1 text-white">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter by User</label>
+              <select
+                value={filters.userId}
+                onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
+                disabled={!!filters.videoId}
+                className={`w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none transition-all ${filters.videoId ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer hover:border-slate-400'
+                  }`}
+              >
+                <option value="">All Users</option>
+                {dashboardData.availableFilters?.users.map(u => (
+                  <option key={u.id} value={u.id}>{u.id}</option>
+                ))}
+              </select>
+              {filters.videoId && (
+                <p className="text-[9px] text-yellow-500/80 mt-1 italic">Clear video filter to enable user selection</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-600/50">
             <button
               onClick={handleApplyFilters}
-              className="md:self-end bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all h-[42px]"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all shadow-lg shadow-indigo-500/20"
             >
-              Apply Filter
+              Apply All Filters
             </button>
+            <button
+              onClick={handleClearFilters}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-500 text-slate-200 px-6 py-2 rounded-lg font-bold transition-all"
+            >
+              Clear Filters
+            </button>
+
+            {/* Badge showing applied filters */}
+            {(appliedDateRange.start || appliedDateRange.end || appliedFilters.userId || appliedFilters.videoId) && (
+              <div className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs font-medium">
+                <Zap size={14} />
+                Filters Active
+              </div>
+            )}
           </div>
         </div>
 
@@ -325,7 +390,8 @@ const QoEDashboard = () => {
                   </Pie>
                   <Tooltip
                     formatter={(value, name) => [`Total: ${value} users`, name]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', color: '#fff', fontSize: '12px', borderRadius: '4px' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                   <Legend />
                 </PieChart>
@@ -346,7 +412,8 @@ const QoEDashboard = () => {
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
                     formatter={(value, name, props) => [`Total: ${value} users`, props.payload.name]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', color: '#fff', fontSize: '12px', borderRadius: '4px' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" />
                 </BarChart>
@@ -366,8 +433,9 @@ const QoEDashboard = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={80} />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Detected ${value} cases`, props.payload.name]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
+                    formatter={(value, name, props) => [`${value} affected users`, props.payload.name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', color: '#fff', fontSize: '12px', borderRadius: '4px' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                   <Bar dataKey="value" fill="#ef4444" />
                 </BarChart>
@@ -385,8 +453,9 @@ const QoEDashboard = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Occurred ${value} times`, props.payload.name]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
+                    formatter={(value, name, props) => [`${value} affected users`, props.payload.name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', color: '#fff', fontSize: '12px', borderRadius: '4px' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                   <Bar dataKey="value" fill="#f59e0b" />
                 </BarChart>

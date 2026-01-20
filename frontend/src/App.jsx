@@ -17,7 +17,7 @@ function App() {
       {/* Always show header and tabs */}
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom align="center">
-          🎬 AI Video Processor
+          🎬 Quality of Experience (QOE) Tracking
         </Typography>
 
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -30,8 +30,8 @@ function App() {
             allowScrollButtonsMobile
           >
             {/* <Tab label="Video Processing" /> */}
-            <Tab label="Single Player Tracking" />
-            <Tab label="Consolidated Dashboard" />
+            <Tab label="Viewer View" />
+            <Tab label="Admin CMS" />
           </Tabs>
         </Box>
 

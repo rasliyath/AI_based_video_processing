@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const QoESession = require('../models/QoESession');
 const QoEEvent = require('../models/QoEEvent');
 
@@ -7,10 +8,19 @@ const QoEEvent = require('../models/QoEEvent');
 router.post('/session/start', async (req, res) => {
   try {
     const { sessionId, userId, videoId, videoTitle, deviceInfo, networkType, cdnEndpoint } = req.body;
+    const userAgent = req.get('user-agent') || 'unknown';
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+
+    // Generate unique ID from IP and User Agent if missing
+    let finalUserId = userId;
+    if (!finalUserId || finalUserId === 'anonymous' || finalUserId === 'null') {
+      finalUserId = crypto.createHash('md5').update(`${ip}-${userAgent}`).digest('hex').substring(0, 12);
+      finalUserId = `${deviceInfo?.type || 'web'}_${finalUserId}`;
+    }
 
     const newSession = new QoESession({
       sessionId,
-      userId: userId || 'anonymous',
+      userId: finalUserId,
       videoId,
       videoTitle,
       deviceType: deviceInfo?.type || 'desktop',
@@ -46,6 +56,14 @@ router.post('/session/:sessionId/event', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { userId, videoId, eventType, eventData } = req.body;
+    const userAgent = req.get('user-agent') || 'unknown';
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+
+    let finalUserId = userId;
+    if (!finalUserId || finalUserId === 'anonymous' || finalUserId === 'null') {
+      finalUserId = crypto.createHash('md5').update(`${ip}-${userAgent}`).digest('hex').substring(0, 12);
+      finalUserId = `web_${finalUserId}`;
+    }
 
     // Only store critical events
     const criticalEvents = ['buffering_start', 'buffering_end', 'quality_change', 'error', 'crash'];
@@ -59,7 +77,7 @@ router.post('/session/:sessionId/event', async (req, res) => {
 
     const newEvent = new QoEEvent({
       sessionId,
-      userId: userId || 'anonymous',
+      userId: finalUserId,
       videoId,
       eventType,
       eventData
@@ -201,14 +219,15 @@ router.get('/session/:sessionId', async (req, res) => {
 // ✅ GET - Get overall analytics WITH DATE RANGE FILTERING
 router.get('/analytics', async (req, res) => {
   try {
-    // Extract date parameters from query string
-    const { startDate, endDate } = req.query;
+    // Extract parameters from query string
+    const { startDate, endDate, userId, videoId, error } = req.query;
 
     console.log('📊 Fetching analytics with filters:', {
       startDate,
       endDate,
-      receivedStartDate: startDate ? new Date(startDate) : null,
-      receivedEndDate: endDate ? new Date(endDate) : null,
+      userId,
+      videoId,
+      error
     });
 
     // Build date filter
@@ -273,11 +292,18 @@ router.get('/analytics', async (req, res) => {
       };
     }
 
-    // Combine status filter with date filter
+    // Combine status filter with dynamic filters
     const query = {
       status: { $in: ['completed', 'abandoned'] },
       ...dateFilter
     };
+
+    if (userId) query.userId = userId;
+    if (videoId) query.videoId = videoId;
+    if (error) {
+      // Filter sessions that have at least one playback error with this message
+      query['playbackErrors.message'] = error;
+    }
 
     console.log('🔍 Query:', JSON.stringify(query, null, 2));
 
@@ -409,24 +435,30 @@ router.get('/analytics', async (req, res) => {
     // Aggregations
     const deviceBreakdown = {};
     const networkBreakdown = {};
-    const errorMessageBreakdown = {};
     const errorTypeBreakdown = {};
+    const errorUserMap = {}; // Unique users affected by each error
 
     sessions.forEach(s => {
-      // breakdown
+      // Device breakdown
       const device = s.deviceType || 'unknown';
       deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1;
 
+      // Network breakdown
       const network = s.networkType || 'unknown';
       networkBreakdown[network] = (networkBreakdown[network] || 0) + 1;
 
+      // Error message breakdown (Count unique users affected)
       if (s.playbackErrors) {
         s.playbackErrors.forEach(e => {
           const message = e.message || `Error ${e.code}` || 'unknown';
-          errorMessageBreakdown[message] = (errorMessageBreakdown[message] || 0) + 1;
+          if (!errorUserMap[message]) {
+            errorUserMap[message] = new Set();
+          }
+          errorUserMap[message].add(s.userId);
         });
       }
 
+      // Error type breakdown (Technical errors/crashes)
       if (s.recordedErrors) {
         s.recordedErrors.forEach(e => {
           const type = e.type || 'unknown';
@@ -440,6 +472,13 @@ router.get('/analytics', async (req, res) => {
         });
       }
     });
+
+    const errorMessageBreakdown = {};
+    Object.entries(errorUserMap).forEach(([msg, users]) => {
+      errorMessageBreakdown[msg] = users.size; // Store user count instead of raw event count
+    });
+
+
 
     // ==================== BUILD RESPONSE ====================
 
@@ -461,6 +500,18 @@ router.get('/analytics', async (req, res) => {
       topErrorTypes: errorTypeBreakdown,        // ← NEW
       userList,                                 // ← NEW
       videoList,                                // ← NEW
+    };
+
+    // If no specific filters are applied, or even if they are, 
+    // we want to provide the lists for the dropdowns
+    // These come from ALL sessions (ignoring specific userId/videoId/error filters but respecting date)
+    // Actually, it's better to fetch these from the current resulting sessions 
+    // but the user might want to see ALL options available in that date range.
+
+    // For now, let's use the ones found in the CURRENT query to populate "Available Filters"
+    analytics.availableFilters = {
+      users: userList.map(u => ({ id: u.userId, label: u.userId })),
+      videos: videoList.map(v => ({ id: v.videoId, label: v.title }))
     };
 
     // Always include dateRange in response

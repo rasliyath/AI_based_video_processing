@@ -52,21 +52,15 @@ const QoETrackerDemo = () => {
   // ];
   // const [selectedUserId, setSelectedUserId] = useState('user_1');
 
-  // NEW: Device-based user tracking
-  const [deviceFingerprint, setDeviceFingerprint] = useState(null);
-  const [platformType, setPlatformType] = useState('unknown');
-  const [selectedUserId, setSelectedUserId] = useState(null);
-
-  // Generate device fingerprint based on platform and browser characteristics
-  const generateDeviceFingerprint = () => {
+  // NEW: Persistent Device-based user tracking
+  const getDeviceDetails = () => {
     const ua = navigator.userAgent;
     const platform = navigator.platform || 'unknown';
-    const language = navigator.language || 'unknown';
     const screenRes = `${window.screen.width}x${window.screen.height}`;
+    const language = navigator.language || 'unknown';
     const colorDepth = window.screen.colorDepth;
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'unknown';
 
-    // Detect platform type
     let detectedPlatform = 'web';
     if (/Smart-?TV|SMART-TV|NetCast|AppleTV|GoogleTV|Tizen|WebOS/i.test(ua)) {
       detectedPlatform = 'tv';
@@ -74,18 +68,23 @@ const QoETrackerDemo = () => {
       detectedPlatform = 'mobile';
     }
 
-    // Create a unique fingerprint string
-    const fingerprintString = `${detectedPlatform}_${ua}_${platform}_${screenRes}_${colorDepth}_${language}_${timezone}`;
+    // 1. Check if we already have a persistent ID
+    let uniqueId = localStorage.getItem('qoe_device_id');
 
-    // Generate a hash-like ID from the fingerprint
-    let hash = 0;
-    for (let i = 0; i < fingerprintString.length; i++) {
-      const char = fingerprintString.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+    if (!uniqueId) {
+      // Create fingerprint string
+      const fingerprintString = `${detectedPlatform}_${ua}_${platform}_${screenRes}_${language}`;
+
+      // Simple hash
+      let hash = 0;
+      for (let i = 0; i < fingerprintString.length; i++) {
+        hash = ((hash << 5) - hash) + fingerprintString.charCodeAt(i);
+        hash |= 0;
+      }
+
+      uniqueId = `${detectedPlatform}_${Math.abs(hash).toString(36)}`;
+      localStorage.setItem('qoe_device_id', uniqueId);
     }
-
-    const uniqueId = `${detectedPlatform}_${Math.abs(hash).toString(36)}`;
 
     return {
       userId: uniqueId,
@@ -101,16 +100,15 @@ const QoETrackerDemo = () => {
     };
   };
 
-  // Initialize device fingerprint on component mount
-  useEffect(() => {
-    const fingerprint = generateDeviceFingerprint();
-    setDeviceFingerprint(fingerprint);
-    setSelectedUserId(fingerprint.userId);
-    setPlatformType(fingerprint.platform);
-    console.log('🔐 Device Fingerprint Generated:', fingerprint);
+  // NEW: Persistent Device-based user tracking (Static for the device)
+  const deviceFingerprint = getDeviceDetails();
+  const selectedUserId = deviceFingerprint.userId;
+  const platformType = deviceFingerprint.platform;
 
+  // Initialize component on mount
+  useEffect(() => {
     // Set document title
-    document.title = "Single Player QoE Tracking";
+    document.title = "Viewer View";
   }, []);
 
   // Tracking refs
