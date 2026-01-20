@@ -193,26 +193,29 @@ const QoEDashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">📊 Consolidated QoE Dashboard</h1>
-            <p className="text-slate-400">Video platform quality monitoring</p>
-            <p className="text-sm text-slate-500 mt-1">
-              <Calendar className="inline mr-1" size={14} />
-              Period: <strong>{getDateRangeText()}</strong>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
+              <TrendingUp className="text-blue-400" />
+              QoE Dashboard
+            </h1>
+            <p className="text-slate-400 text-sm md:text-base">Video platform quality monitoring</p>
+            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+              <Calendar size={12} />
+              Period: {dashboardData.dateRange?.from || 'All Time'} - {dashboardData.dateRange?.to || 'Today'}
             </p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => fetchDashboardData(appliedDateRange.start, appliedDateRange.end)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+              onClick={() => fetchDashboardData(dateRange.start, dateRange.end)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-all text-sm"
             >
               <RefreshCw size={18} />
               Refresh
             </button>
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-all text-sm"
             >
               <Download size={18} />
               Export
@@ -220,72 +223,38 @@ const QoEDashboard = () => {
           </div>
         </div>
 
-        {/* Date Range Filters */}
-        <div className="bg-slate-700 p-6 rounded-lg mb-8">
-          <h2 className="text-lg font-bold text-white mb-4">📅 Filter by Date Range</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm text-slate-300 mb-2">Start Date</label>
+        {/* Filters */}
+        <div className="bg-slate-700/50 backdrop-blur-sm p-4 md:p-6 rounded-xl mb-8 border border-slate-600">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Start Date</label>
               <input
                 type="date"
                 value={dateRange.start}
                 onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
-              {dateRange.start && (
-                <p className="text-xs text-slate-400 mt-1">{new Date(dateRange.start).toLocaleDateString()}</p>
-              )}
             </div>
-
-            <div>
-              <label className="block text-sm text-slate-300 mb-2">End Date</label>
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">End Date</label>
               <input
                 type="date"
                 value={dateRange.end}
                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded text-white"
+                className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
-              {dateRange.end && (
-                <p className="text-xs text-slate-400 mt-1">{new Date(dateRange.end).toLocaleDateString()}</p>
-              )}
             </div>
-
-            <div className="flex gap-2 items-end">
-              <button
-                onClick={handleApplyFilters}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded font-semibold"
-              >
-                ✅ Apply
-              </button>
-            </div>
-
-            <div className="flex gap-2 items-end">
-              <button
-                onClick={handleClearFilters}
-                className="flex-1 bg-slate-600 hover:bg-slate-500 text-white px-6 py-2 rounded font-semibold"
-              >
-                🔄 Clear
-              </button>
-            </div>
+            <button
+              onClick={handleApplyFilters}
+              className="md:self-end bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-all h-[42px]"
+            >
+              Apply Filter
+            </button>
           </div>
-
-          {appliedDateRange.start || appliedDateRange.end ? (
-            <div className="mt-4 p-3 bg-blue-900 border border-blue-500 rounded">
-              <p className="text-sm text-blue-200">
-                ✅ Filters applied: <strong>{getDateRangeText()}</strong> | Sessions found: <strong>{dashboardData.totalEvents || 0}</strong>
-              </p>
-            </div>
-          ) : (
-            <div className="mt-4 p-3 bg-slate-600 border border-slate-500 rounded">
-              <p className="text-sm text-slate-300">
-                📊 Showing all-time data - Select dates to filter
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <div className="bg-slate-700 p-6 rounded-lg border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
@@ -355,8 +324,8 @@ const QoEDashboard = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value, name) => [`Total: ${value} users on ${name}`, "Device Usage"]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                    formatter={(value, name) => [`Total: ${value} users`, name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
                   />
                   <Legend />
                 </PieChart>
@@ -376,8 +345,8 @@ const QoEDashboard = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Total: ${value} users on ${props.payload.name} network`, "Network Coverage"]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                    formatter={(value, name, props) => [`Total: ${value} users`, props.payload.name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" />
                 </BarChart>
@@ -397,8 +366,8 @@ const QoEDashboard = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" angle={-45} textAnchor="end" height={80} />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Detected ${value} cases of ${props.payload.name}`, "Problem Areas"]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                    formatter={(value, name, props) => [`Detected ${value} cases`, props.payload.name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
                   />
                   <Bar dataKey="value" fill="#ef4444" />
                 </BarChart>
@@ -416,8 +385,8 @@ const QoEDashboard = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Occurred ${value} times: ${props.payload.name}`, "Frequency"]}
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff' }}
+                    formatter={(value, name, props) => [`Occurred ${value} times`, props.payload.name]}
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#fff', fontSize: '12px' }}
                   />
                   <Bar dataKey="value" fill="#f59e0b" />
                 </BarChart>
@@ -438,6 +407,118 @@ const QoEDashboard = () => {
                   Quality adaptations help users with varying network conditions watch videos seamlessly.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Detailed Lists Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* User Directory */}
+          <div className="bg-slate-700 p-6 rounded-lg shadow-xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Users className="text-blue-400" size={24} />
+                User Directory
+              </h2>
+              <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                {dashboardData.userList?.length || 0} Total Users
+              </span>
+            </div>
+            <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-600 text-slate-400 text-xs uppercase tracking-wider">
+                    <th className="py-3 px-4 font-semibold">User ID</th>
+                    <th className="py-3 px-4 font-semibold text-center">Sessions</th>
+                    <th className="py-3 px-4 font-semibold text-center">Avg QoE</th>
+                    <th className="py-3 px-4 font-semibold">Platforms</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-300 text-sm">
+                  {(dashboardData.userList || []).map((user, idx) => (
+                    <tr key={idx} className="border-b border-slate-600/50 hover:bg-slate-600/30 transition-colors">
+                      <td className="py-4 px-4 font-medium text-blue-300 truncate max-w-[150px]" title={user.userId}>
+                        {user.userId}
+                      </td>
+                      <td className="py-4 px-4 text-center">{user.sessionCount}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${user.avgQoEScore > 80 ? 'bg-green-500/20 text-green-400' :
+                          user.avgQoEScore > 60 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+                          }`}>
+                          {user.avgQoEScore}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          {user.platforms.map((p, i) => (
+                            <span key={i} className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-600">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!dashboardData.userList || dashboardData.userList.length === 0) && (
+                    <tr><td colSpan="4" className="py-8 text-center text-slate-500 italic">No user data found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Video Performance */}
+          <div className="bg-slate-700 p-6 rounded-lg shadow-xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Zap className="text-yellow-400" size={24} />
+                Video Performance
+              </h2>
+              <span className="text-xs text-slate-400 bg-slate-800 px-2 py-1 rounded">
+                {dashboardData.videoList?.length || 0} Videos
+              </span>
+            </div>
+            <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-600 text-slate-400 text-xs uppercase tracking-wider">
+                    <th className="py-3 px-4 font-semibold">Video Title</th>
+                    <th className="py-3 px-4 font-semibold text-center">Plays</th>
+                    <th className="py-3 px-4 font-semibold text-center">Avg QoE</th>
+                    <th className="py-3 px-4 font-semibold text-center">Err Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="text-slate-300 text-sm">
+                  {(dashboardData.videoList || []).map((video, idx) => (
+                    <tr key={idx} className="border-b border-slate-600/50 hover:bg-slate-600/30 transition-colors">
+                      <td className="py-4 px-4 font-medium text-slate-200">
+                        <div className="flex flex-col">
+                          <span>{video.title}</span>
+                          <span className="text-[10px] text-slate-500 font-mono tracking-tighter truncate max-w-[120px]" title={video.videoId}>
+                            ID: {video.videoId}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 text-center">{video.playCount}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${video.avgQoEScore > 80 ? 'bg-green-500/20 text-green-400' :
+                          video.avgQoEScore > 60 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'
+                          }`}>
+                          {video.avgQoEScore}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={video.errorRate > 0.5 ? 'text-red-400 font-bold' : 'text-slate-400'}>
+                          {(video.errorRate * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!dashboardData.videoList || dashboardData.videoList.length === 0) && (
+                    <tr><td colSpan="4" className="py-8 text-center text-slate-500 italic">No video data found</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

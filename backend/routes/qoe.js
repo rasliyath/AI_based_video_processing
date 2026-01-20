@@ -344,38 +344,89 @@ router.get('/analytics', async (req, res) => {
 
     // ==================== BREAKDOWNS ====================
 
-    // Unique users and videos
-    const uniqueUsers = new Set(sessions.map(s => s.userId));
-    const uniqueVideos = new Set(sessions.map(s => s.videoId));
-
-    // Device breakdown
-    const deviceBreakdown = {};
+    // Detailed User List
+    const userMap = {};
     sessions.forEach(s => {
+      if (!userMap[s.userId]) {
+        userMap[s.userId] = {
+          userId: s.userId,
+          sessions: 0,
+          platforms: new Set(),
+          avgQoE: 0,
+          lastActive: s.startTime,
+          totalWatchTime: 0
+        };
+      }
+      const u = userMap[s.userId];
+      u.sessions += 1;
+      u.platforms.add(s.deviceType || 'unknown');
+      u.totalWatchTime += (s.totalWatchDuration || 0);
+      u.avgQoE += (s.qoeScore || 0);
+      if (new Date(s.startTime) > new Date(u.lastActive)) {
+        u.lastActive = s.startTime;
+      }
+    });
+
+    const userList = Object.values(userMap).map(u => ({
+      userId: u.userId,
+      sessionCount: u.sessions,
+      platforms: Array.from(u.platforms),
+      avgQoEScore: Math.round(u.avgQoE / u.sessions),
+      lastActive: u.lastActive,
+      totalWatchTime: u.totalWatchTime
+    })).sort((a, b) => new Date(b.lastActive) - new Date(a.lastActive));
+
+    // Detailed Video List
+    const videoMap = {};
+    sessions.forEach(s => {
+      if (!videoMap[s.videoId]) {
+        videoMap[s.videoId] = {
+          videoId: s.videoId,
+          title: s.videoTitle || 'Unknown Video',
+          plays: 0,
+          totalWatchTime: 0,
+          totalErrors: 0,
+          avgQoE: 0
+        };
+      }
+      const v = videoMap[s.videoId];
+      v.plays += 1;
+      v.totalWatchTime += (s.totalWatchDuration || 0);
+      v.totalErrors += (s.totalErrors || 0);
+      v.avgQoE += (s.qoeScore || 0);
+    });
+
+    const videoList = Object.values(videoMap).map(v => ({
+      videoId: v.videoId,
+      title: v.title,
+      playCount: v.plays,
+      avgWatchDuration: Math.round(v.totalWatchTime / v.plays),
+      errorRate: parseFloat(((v.totalErrors / v.plays)).toFixed(2)),
+      avgQoEScore: Math.round(v.avgQoE / v.plays)
+    })).sort((a, b) => b.playCount - a.playCount);
+
+
+    // Aggregations
+    const deviceBreakdown = {};
+    const networkBreakdown = {};
+    const errorMessageBreakdown = {};
+    const errorTypeBreakdown = {};
+
+    sessions.forEach(s => {
+      // breakdown
       const device = s.deviceType || 'unknown';
       deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1;
-    });
 
-    // Network breakdown
-    const networkBreakdown = {};
-    sessions.forEach(s => {
       const network = s.networkType || 'unknown';
       networkBreakdown[network] = (networkBreakdown[network] || 0) + 1;
-    });
 
-    // Error message breakdown
-    const errorMessageBreakdown = {};
-    sessions.forEach(s => {
       if (s.playbackErrors) {
         s.playbackErrors.forEach(e => {
           const message = e.message || `Error ${e.code}` || 'unknown';
           errorMessageBreakdown[message] = (errorMessageBreakdown[message] || 0) + 1;
         });
       }
-    });
 
-    // Error type breakdown (from recorded errors)
-    const errorTypeBreakdown = {};
-    sessions.forEach(s => {
       if (s.recordedErrors) {
         s.recordedErrors.forEach(e => {
           const type = e.type || 'unknown';
@@ -400,14 +451,16 @@ router.get('/analytics', async (req, res) => {
       recordedErrors: totalRecordedErrors,      // ← NEW
       recordedCrashes: totalRecordedCrashes,    // ← NEW
       errorPercentage,
-      userCount: uniqueUsers.size,
-      videoCount: uniqueVideos.size,
+      userCount: userList.length,
+      videoCount: videoList.length,
       totalQualityChanges,
       avgWatchDuration,
       deviceBreakdown,
       networkTypeBreakdown: networkBreakdown,
       topErrorMessages: errorMessageBreakdown,
       topErrorTypes: errorTypeBreakdown,        // ← NEW
+      userList,                                 // ← NEW
+      videoList,                                // ← NEW
     };
 
     // Always include dateRange in response

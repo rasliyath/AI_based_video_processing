@@ -1243,13 +1243,16 @@ const QoETrackerDemo = () => {
         <div
           style={{
             display: "flex",
+            flexDirection: "row",
+            flexWrap: "wrap",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "16px",
+            gap: "16px",
+            marginBottom: "24px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <h1 style={{ ...titleStyle, marginBottom: 0 }}>🎯 Single Player QoE Tracking</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <h1 style={{ ...titleStyle, marginBottom: 0, fontSize: "24px" }}>🎯 Single Player QoE Tracking</h1>
             <button
               onClick={() => setShowGuide(!showGuide)}
               style={{
@@ -1276,16 +1279,17 @@ const QoETrackerDemo = () => {
             </button>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", width: "100%", md: { width: "auto" } }}>
             {/* NEW: Device platform indicator */}
             <div style={{
               display: "flex",
               alignItems: "center",
               gap: "8px",
               background: "#334155",
-              padding: "8px 16px",
+              padding: "8px 12px",
               borderRadius: "6px",
-              border: "1px solid #475569"
+              border: "1px solid #475569",
+              flex: "1 1 auto"
             }}>
               <span style={{ fontSize: "20px" }}>
                 {platformType === 'mobile' ? '📱' : platformType === 'tv' ? '📺' : '💻'}
@@ -1302,10 +1306,11 @@ const QoETrackerDemo = () => {
 
             <div style={{
               background: "#334155",
-              padding: "8px 16px",
+              padding: "8px 12px",
               borderRadius: "6px",
               border: "1px solid #475569",
-              maxWidth: "300px"
+              flex: "2 1 auto",
+              minWidth: "150px"
             }}>
               <div style={{ color: "#94a3b8", fontSize: "10px", textTransform: "uppercase" }}>
                 Device ID
@@ -1504,7 +1509,7 @@ const QoETrackerDemo = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 320px",
+            gridTemplateColumns: window.innerWidth > 968 ? "1fr 320px" : "1fr",
             gap: "24px",
             marginBottom: "32px",
           }}
@@ -1516,7 +1521,7 @@ const QoETrackerDemo = () => {
                 borderRadius: "8px",
                 overflow: "hidden",
                 marginBottom: "24px",
-                minHeight: "400px",
+                minHeight: window.innerWidth > 768 ? "400px" : "240px",
               }}
             >
               <div ref={playerRef} style={{ width: "100%" }}></div>
@@ -1564,11 +1569,11 @@ const QoETrackerDemo = () => {
           <div
             style={{
               ...getQoEColor(),
-              padding: "32px",
+              padding: "24px",
               borderRadius: "8px",
               height: "fit-content",
-              position: "sticky",
-              top: "24px",
+              position: window.innerWidth > 968 ? "sticky" : "relative",
+              top: window.innerWidth > 968 ? "24px" : "0",
             }}
           >
             <h2
@@ -1849,11 +1854,13 @@ const QoETrackerDemo = () => {
                   <XAxis dataKey="name" stroke="#94a3b8" />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip
-                    formatter={(value, name, props) => [`Total: ${value} times ${props.payload.name} occurred`, "Activities"]}
+                    formatter={(value, name, props) => [`Total: ${value} times`, props.payload.name]}
                     contentStyle={{
                       backgroundColor: "#1e293b",
                       border: "1px solid #475569",
                       color: "#fff",
+                      fontSize: "12px",
+                      padding: "8px"
                     }}
                   />
                   <Bar dataKey="value" fill="#3b82f6" />
@@ -1901,11 +1908,13 @@ const QoETrackerDemo = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value, name) => [`Watched ${value} times in ${name}`, "Usage"]}
+                    formatter={(value, name) => [`Watched ${value} times`, name]}
                     contentStyle={{
                       backgroundColor: "#1e293b",
                       border: "1px solid #475569",
                       color: "#fff",
+                      fontSize: "12px",
+                      padding: "8px"
                     }}
                   />
                 </PieChart>

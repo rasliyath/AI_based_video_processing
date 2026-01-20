@@ -21,7 +21,14 @@ function App() {
         </Typography>
 
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs value={tabValue} onChange={handleTabChange} aria-label="main tabs">
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
+            aria-label="main tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+          >
             {/* <Tab label="Video Processing" /> */}
             <Tab label="Single Player Tracking" />
             <Tab label="Consolidated Dashboard" />
